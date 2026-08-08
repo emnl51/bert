@@ -4,13 +4,28 @@ import httpx
 from .models import Job
 
 
+LABELS = {
+    'english_first': 'English-first',
+    'german_growth': 'German-growth',
+    'stretch': 'B2 stretch',
+    'german_heavy': 'German-heavy',
+    'unclear': 'Language unclear',
+}
+
+
 def build_text_digest(jobs: list[Job]) -> str:
     lines = [f'JobTrack — {len(jobs)} new matches', '']
     for i, job in enumerate(jobs, 1):
-        why = ', '.join(job.reasons[:5])
+        why = ', '.join(job.reasons[:4])
+        language_why = ', '.join(job.language_reasons[:3])
         lines.extend([
-            f'{i}. {job.title}', f'   {job.company} | {job.location} | score {job.score}',
-            f'   Why: {why}', f'   {job.url}', '',
+            f'{i}. {job.title}',
+            f'   {job.company} | {job.location}',
+            f'   Overall {job.overall_score}/100 | Job {job.score}/100 | Language {job.language_score}/100',
+            f'   Language: {LABELS.get(job.language_label, job.language_label)}',
+            f'   Why: {why}',
+            f'   Language fit: {language_why}',
+            f'   {job.url}', '',
         ])
     return '\n'.join(lines)
 
@@ -19,7 +34,7 @@ def send_email(jobs: list[Job], cfg: dict) -> bool:
     if not (cfg.get('smtp_host') and cfg.get('email_from') and cfg.get('email_to')):
         return False
     msg = EmailMessage()
-    msg['Subject'] = f'Berlin Supply Chain Jobs — {len(jobs)} new matches'
+    msg['Subject'] = f'JobTrack — {len(jobs)} new matches'
     msg['From'] = cfg['email_from']
     msg['To'] = cfg['email_to']
     msg.set_content(build_text_digest(jobs))
@@ -60,5 +75,10 @@ async def test_telegram(cfg: dict) -> bool:
 
 
 def test_email(cfg: dict) -> bool:
-    sample = Job(source='test', external_id='test', title='Connection Test', company='JobTrack', location='Berlin', url='https://example.com', score=100, reasons=['SMTP connection test'])
+    sample = Job(
+        source='test', external_id='test', title='Connection Test', company='JobTrack',
+        location='Berlin', url='https://example.com', score=100, language_score=100,
+        overall_score=100, language_label='english_first', reasons=['SMTP connection test'],
+        language_reasons=['English working environment'],
+    )
     return send_email([sample], cfg)
