@@ -1,46 +1,65 @@
-# JobTrack v9
+# JobTrack v10
 
-Self-hosted job discovery, ranking and application tracking for Berlin/Brandenburg roles.
+Self-hosted job discovery, ranking, scheduled search and application tracking for Berlin/Brandenburg roles.
 
-## v9: Multi-profile search
+## v10: Multiple Search Jobs
 
-JobTrack can now run multiple career strategies in the same installation. Vacancies are stored once, but each enabled profile gets its own Job Fit, Language Fit and Overall Fit score.
+JobTrack now separates **Search Profiles** from **Search Jobs**.
 
-Default profiles:
+- **Search Profile** = how a vacancy is scored and learned from.
+- **Search Job** = an independent automation that decides what to search, where, when, from which sources and how to notify you.
+
+You can create any number of Search Jobs from the web UI.
+
+Examples:
+
+- Werkstudent Berlin — daily at 08:00 — Werkstudent profile — Telegram
+- Hennigsdorf Supply Chain — weekly Monday — Werkstudent profile — email
+- Full-time Supply Chain Manager — every 12 hours — Full-time profile — Telegram + email
+- Target Companies — manual only — selected ATS sources — no notifications
+
+Each Search Job can independently configure:
+
+- scoring profile
+- primary location and location terms
+- selected sources, or all enabled sources
+- weekly / daily / interval / manual-only execution
+- day, time and interval
+- minimum Overall Fit override
+- minimum Language Fit override
+- maximum results per notification
+- Telegram enabled/disabled
+- email enabled/disabled
+- Telegram Chat ID override
+- Telegram Bot Token override
+- SMTP/email recipient/sender overrides
+- enabled/disabled state
+
+Blank notification override fields inherit the global notification settings. Per-job secrets are encrypted with the existing `APP_SECRET_KEY`.
+
+### Independent freshness
+
+The same vacancy can legitimately be new to more than one Search Job. v10 therefore stores per-job seen state in `search_job_seen` instead of relying only on global job deduplication. This prevents one Search Job from suppressing another Search Job's notification.
+
+## Search Profiles
+
+Default profiles remain:
 
 - **Werkstudent / Part-time** — Supply Chain, Procurement, Planning, Operations and Logistics student roles; English-first with German A2→B1.
-- **Full-time Supply Chain** — Supply Chain Manager, Operations Manager, Procurement Manager, Customer Supply Chain and senior specialist roles; prepared for the post-MBA transition.
+- **Full-time Supply Chain** — Supply Chain Manager, Operations Manager, Procurement Manager, Customer Supply Chain and senior specialist roles.
 
-Each profile has independent:
+Each profile has independent scoring, language thresholds and learning rules.
 
-- search phrases
-- title / skill / employment-format scoring weights
-- negative keywords
-- target location terms
-- minimum Overall Fit
-- minimum Language Fit
-- German level and maximum preferred German requirement
-- Language Fit weight
-- B2 stretch / German-heavy behaviour
-- positive preference learning
-- Not-suitable penalty learning
+## Learning
 
-Use **Profiles** in the web UI to create, edit, enable, disable and select profiles. The Job Review Queue has a profile selector and immediately switches to the selected profile's scores and learning rules.
-
-## Profile-aware learning
-
-Learning is isolated per profile. Rejecting a role in the Werkstudent profile does not automatically penalize it in the Full-time profile.
-
-Positive signals:
+Positive learning:
 
 - Suitable
 - Applied
 - Interview
 - Offer
 
-Negative signals come from structured **Not suitable** reasons. Boost and penalty rules remain visible, reversible and capped.
-
-Application Tracker remains global because an actual application is a single real-world application. Application milestones are learned by the profile where the job was originally marked Suitable; legacy applications without profile history fall back to the default profile.
+Negative learning comes from structured **Not suitable** reasons. Learning remains profile-specific and reversible.
 
 ## Job sources
 
@@ -78,14 +97,13 @@ Each vacancy can also be reviewed as Suitable, Maybe or Not suitable.
 
 ## Database
 
-v9 adds:
+v10 adds:
 
-- `search_profiles`
-- `job_profile_scores`
-- profile scoping to feedback and learned rules
-- profile scoping to positive events and boost rules
+- `search_jobs`
+- `search_job_runs`
+- `search_job_seen`
 
-Existing jobs, applications, sources and settings are preserved during migration.
+Existing jobs, profiles, applications, sources, learning rules and settings are preserved.
 
 ## Quick start
 
@@ -101,13 +119,15 @@ Open:
 http://SERVER_IP:8080
 ```
 
+The Docker entry point is now `app.v10_main:app`.
+
 ## Upgrade
 
-See `UPGRADE_V8_TO_V9.md`. Keep the existing `/data` Docker volume and `APP_SECRET_KEY`.
+See `UPGRADE_V9_TO_V10.md`. Keep the existing `/data` Docker volume and keep `APP_SECRET_KEY` unchanged.
 
 ## CI
 
-GitHub Actions now runs on pushes to `main` and pull requests:
+GitHub Actions runs on pushes to `main` and pull requests:
 
 ```text
 python -m compileall -q app tests
@@ -118,5 +138,6 @@ python -m pytest -q
 
 - Keep `.env` out of Git.
 - Keep `APP_SECRET_KEY` stable across upgrades.
+- Per-search-job bot tokens and SMTP passwords are encrypted in SQLite.
 - Do not expose port 8080 publicly without HTTPS or private network access.
 - Prefer Caddy/Nginx or Tailscale/WireGuard.
