@@ -14,7 +14,7 @@ def test_v16_shell_has_mobile_navigation_and_table_cards():
 
 def test_v16_main_loads_shell_last():
     text = Path('app/v16_main.py').read_text(encoding='utf-8')
-    assert "VERSION = '16.4.0'" in text
+    assert "VERSION = '16.4.1'" in text
     assert 'app.version = VERSION' in text
     assert '<script src="/ui-shell.js"></script>' in text
     assert text.index('<script src="/log-ui.js"></script>') < text.index('<script src="/ui-shell.js"></script>')
@@ -50,6 +50,14 @@ def test_legacy_jobs_refresh_is_routed_to_review_queue():
     assert "@app.get('/legacy-compat-ui.js')" in main
     assert 'window.loadJobs = routeLegacyJobsRefresh' in compat
     assert 'window.loadReviewJobs' in compat
+
+
+def test_candidate_assignment_ui_restores_saved_mapping():
+    js = Path('app/intelligence-ui.js').read_text(encoding='utf-8')
+    assert 'assignments=d.assignments||[]' in js
+    assert 'function syncAssignmentSelection()' in js
+    assert 'el.onchange=syncAssignmentSelection' in js
+    assert 'await loadCandidates();toast(c?' in js
 
 
 def test_docker_runs_v16():
