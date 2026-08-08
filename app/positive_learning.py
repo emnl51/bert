@@ -22,6 +22,8 @@ SKILL_TERMS=('supply chain','supply planning','demand planning','material planni
 
 def _now(): return datetime.now(timezone.utc).isoformat()
 def _normalise(text): return re.sub(r'\s+',' ',re.sub(r'[^a-zA-ZäöüÄÖÜß0-9+#./ -]+',' ',text or '').lower()).strip()
+def _table_exists(con, table_name):
+    return bool(con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table_name,)).fetchone())
 
 def ensure_positive_schema():
     from .profile_store import ensure_profile_schema
@@ -76,8 +78,9 @@ def record_positive_event(job_key,event_type,profile_id=1):
         job=con.execute('SELECT * FROM jobs WHERE job_key=?',(job_key,)).fetchone()
         if not job: raise ValueError('Job not found')
         if con.execute('SELECT id FROM positive_events WHERE job_key=? AND profile_id=? AND event_type=?',(job_key,profile_id,event_type)).fetchone(): return {'job_key':job_key,'profile_id':profile_id,'event_type':event_type,'created':False,'positive_rule_ids':[]}
-        lang=con.execute('SELECT language_label FROM job_profile_scores WHERE job_key=? AND profile_id=?',(job_key,profile_id)).fetchone()
-        if not lang: lang=con.execute('SELECT language_label FROM job_language WHERE job_key=?',(job_key,)).fetchone()
+        lang=con.execute('SELECT language_label FROM job_profile_scores WHERE job_key=? AND profile_id=?',(job_key,profile_id)).fetchone() if _table_exists(con,'job_profile_scores') else None
+        if not lang and _table_exists(con,'job_language'):
+            lang=con.execute('SELECT language_label FROM job_language WHERE job_key=?',(job_key,)).fetchone()
         label=lang['language_label'] if lang else 'unclear'; ids=[_upsert(con,profile_id,r,event_type) for r in _extract_positive_rules(dict(job),label,event_type)]
         con.execute('INSERT INTO positive_events(job_key,profile_id,event_type,created_at) VALUES(?,?,?,?)',(job_key,profile_id,event_type,_now()))
     return {'job_key':job_key,'profile_id':profile_id,'event_type':event_type,'created':True,'positive_rule_ids':ids}
