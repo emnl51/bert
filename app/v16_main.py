@@ -9,7 +9,7 @@ from .config import settings
 from .security import require_admin
 
 app = v15.app
-app.version = '16.1.0'
+app.version = '16.2.0'
 
 # Replace only the dashboard route so the responsive shell loads after all feature UIs.
 app.router.routes[:] = [
@@ -69,9 +69,10 @@ def apple_touch_icon():
 def v16_health(_: str = Depends(require_admin)):
     return {
         'status': 'ok',
-        'version': '16.1.0',
+        'version': '16.2.0',
         'responsive_ui': True,
         'mobile_navigation': True,
         'mobile_tables': True,
         'reset_refresh_fix': True,
+        'employment_format_filter': True,
     }
