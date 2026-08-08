@@ -9,7 +9,7 @@ from .config import settings
 from .security import require_admin
 
 app = v15.app
-app.version = '16.0.0'
+app.version = '16.1.0'
 
 # Replace only the dashboard route so the responsive shell loads after all feature UIs.
 app.router.routes[:] = [
@@ -43,12 +43,35 @@ def ui_shell(_: str = Depends(require_admin)):
     return Response(Path('app/ui-shell.js').read_text(encoding='utf-8'), media_type='application/javascript')
 
 
+_FAVICON = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="14" fill="#2563eb"/><path d="M17 18h30v8H36v24h-9V26H17z" fill="white"/>
+</svg>'''
+
+
+@app.get('/favicon.svg', include_in_schema=False)
+def favicon_svg():
+    return Response(_FAVICON, media_type='image/svg+xml', headers={'Cache-Control': 'public, max-age=86400'})
+
+
+@app.get('/favicon.ico', include_in_schema=False)
+def favicon_ico():
+    return Response(_FAVICON, media_type='image/svg+xml', headers={'Cache-Control': 'public, max-age=86400'})
+
+
+@app.get('/apple-touch-icon.png', include_in_schema=False)
+@app.get('/apple-touch-icon-precomposed.png', include_in_schema=False)
+def apple_touch_icon():
+    # Avoid noisy browser-generated 404s without adding a binary asset to the image.
+    return Response(status_code=204, headers={'Cache-Control': 'public, max-age=86400'})
+
+
 @app.get('/api/v16-health')
 def v16_health(_: str = Depends(require_admin)):
     return {
         'status': 'ok',
-        'version': '16.0.0',
+        'version': '16.1.0',
         'responsive_ui': True,
         'mobile_navigation': True,
         'mobile_tables': True,
+        'reset_refresh_fix': True,
     }
