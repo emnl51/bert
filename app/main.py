@@ -21,6 +21,7 @@ from .notifier import test_email, test_telegram
 from .language_store import ensure_language_schema, enrich_applications, list_jobs_with_language
 from .providers import test_source
 from .runtime import runtime_config
+from .source_catalog import SOURCE_CATALOG
 from .security import require_admin
 from .service import run_search
 
@@ -65,7 +66,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title=settings.app_name, version='4.0.0', lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version='5.0.0', lifespan=lifespan)
 
 
 class AppSettingsPayload(BaseModel):
@@ -136,13 +137,18 @@ def health():
 def dashboard(request: Request, _: str = Depends(require_admin)):
     html = Path('app/templates/index.html').read_text(encoding='utf-8')
     html = html.replace('{{ app_name }}', settings.app_name)
-    html = html.replace('</body>', '<script src="/language-ui.js"></script></body>')
+    html = html.replace('</body>', '<script src="/language-ui.js"></script><script src="/source-ui.js"></script></body>')
     return HTMLResponse(html)
 
 
 @app.get('/language-ui.js')
 def language_ui(_: str = Depends(require_admin)):
     return Response(Path('app/language-ui.js').read_text(encoding='utf-8'), media_type='application/javascript')
+
+
+@app.get('/source-ui.js')
+def source_ui(_: str = Depends(require_admin)):
+    return Response(Path('app/source-ui.js').read_text(encoding='utf-8'), media_type='application/javascript')
 
 
 @app.get('/api/overview')
@@ -204,6 +210,11 @@ def api_test_email(_: str = Depends(require_admin)):
     return {'ok': True}
 
 
+@app.get('/api/source-catalog')
+def api_source_catalog(_: str = Depends(require_admin)):
+    return {'catalog': SOURCE_CATALOG}
+
+
 @app.get('/api/sources')
 def api_sources(_: str = Depends(require_admin)):
     return {'sources': list_sources(mask_secrets=True)}
@@ -211,8 +222,9 @@ def api_sources(_: str = Depends(require_admin)):
 
 @app.post('/api/sources')
 def add_source(payload: SourcePayload, _: str = Depends(require_admin)):
-    if payload.source_type not in ('rss',):
-        raise HTTPException(400, 'Only RSS/Atom sources can be added from the UI')
+    allowed = {'rss', 'search_link', 'jooble', 'greenhouse', 'lever', 'smartrecruiters'}
+    if payload.source_type not in allowed:
+        raise HTTPException(400, 'Unsupported source type')
     source_id = save_source(payload.name, payload.source_type, payload.enabled, payload.config, payload.secrets)
     return {'ok': True, 'id': source_id}
 
