@@ -39,7 +39,9 @@ def list_user_tables() -> list[str]:
 def database_counts() -> dict[str, int]:
     result = {}
     with connection() as con:
-        for table in list_user_tables():
+        rows = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
+        for row in rows:
+            table = row['name']
             try:
                 result[table] = int(con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
             except sqlite3.DatabaseError:
@@ -60,8 +62,13 @@ def backup_database() -> str:
 
 def _delete_tables(tables: list[str]) -> dict[str, int]:
     deleted = {}
-    with connection() as con:
+    # Use an immediate transaction so the destructive reset is atomic with respect
+    # to other SQLite writers. This prevents a partial reset from being reported as success.
+    con = sqlite3.connect(settings.database_path, timeout=30)
+    con.row_factory = sqlite3.Row
+    try:
         con.execute('PRAGMA foreign_keys=OFF')
+        con.execute('BEGIN IMMEDIATE')
         existing = {r['name'] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         for table in tables:
             if table not in existing or table.startswith('sqlite_'):
@@ -73,7 +80,12 @@ def _delete_tables(tables: list[str]) -> dict[str, int]:
                 con.execute('DELETE FROM sqlite_sequence WHERE name=?', (table,))
             except sqlite3.DatabaseError:
                 pass
-        con.execute('PRAGMA foreign_keys=ON')
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
     return deleted
 
 
@@ -93,6 +105,21 @@ def _reseed_factory_defaults() -> None:
     ensure_candidate_schema()
     ensure_intelligence_schema()
     ensure_source_analytics_schema()
+
+
+def _expected_empty_tables(scope: str) -> set[str]:
+    if scope == 'factory':
+        return {
+            'jobs','applications','job_intelligence','job_feedback','positive_events',
+            'job_profile_scores','job_language','search_job_seen','source_run_stats',
+            'search_job_runs','search_runs','learned_rules','positive_rules',
+        }
+    if scope == 'operational':
+        out = set()
+        for key in ('jobs','runs','learning','intelligence'):
+            out.update(RESET_SCOPES[key]['tables'])
+        return out
+    return set(RESET_SCOPES[scope]['tables'])
 
 
 def reset_database(scope: str, create_backup: bool = True) -> dict:
@@ -117,12 +144,20 @@ def reset_database(scope: str, create_backup: bool = True) -> dict:
     if scope == 'factory':
         _reseed_factory_defaults()
 
+    after = database_counts()
+    expected_empty = _expected_empty_tables(scope)
+    remaining = {table: after.get(table, 0) for table in expected_empty if after.get(table, 0) > 0}
+    if remaining:
+        raise RuntimeError(f'Reset verification failed; rows remain: {remaining}')
+
     return {
         'ok': True,
+        'verified': True,
         'scope': scope,
         'backup_path': backup_path,
         'deleted': deleted,
         'rows_deleted': sum(deleted.values()),
         'before': before,
-        'after': database_counts(),
+        'after': after,
+        'remaining': remaining,
     }
