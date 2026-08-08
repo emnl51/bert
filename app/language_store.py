@@ -114,8 +114,11 @@ def list_jobs_with_language(
                        COALESCE(jl.language_score,55) AS language_score,
                        COALESCE(jl.overall_score,j.score) AS overall_score,
                        COALESCE(jl.language_label,'unclear') AS language_label,
-                       COALESCE(jl.language_reasons_json,'[]') AS language_reasons_json
-                FROM jobs j LEFT JOIN job_language jl ON jl.job_key=j.job_key
+                       COALESCE(jl.language_reasons_json,'[]') AS language_reasons_json,
+                       a.status AS application_status, a.applied_at AS application_applied_at
+                FROM jobs j
+                LEFT JOIN job_language jl ON jl.job_key=j.job_key
+                LEFT JOIN applications a ON a.job_key=j.job_key
                 WHERE {' AND '.join(where)}
                 ORDER BY j.first_seen DESC, COALESCE(jl.overall_score,j.score) DESC LIMIT ?''',
             params,
