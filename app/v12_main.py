@@ -47,6 +47,7 @@ class JobSpyPayload(BaseModel):
     hours_old: int = Field(default=168, ge=1, le=720)
     max_search_terms: int = Field(default=6, ge=1, le=20)
     timeout_seconds: int = Field(default=60, ge=10, le=180)
+    total_timeout_seconds: int = Field(default=180, ge=30, le=600)
     linkedin_fetch_description: bool = False
 
 
@@ -67,6 +68,7 @@ def configure_jobspy(payload: JobSpyPayload, _: str = Depends(require_admin)):
         'hours_old': payload.hours_old,
         'max_search_terms': payload.max_search_terms,
         'timeout_seconds': payload.timeout_seconds,
+        'total_timeout_seconds': payload.total_timeout_seconds,
         'linkedin_fetch_description': payload.linkedin_fetch_description,
     }
     source_id = save_source(payload.name, 'jobspy', payload.enabled, config, {}, source_id=current['id'] if current else None)
