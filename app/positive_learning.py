@@ -30,13 +30,7 @@ CREATE TABLE IF NOT EXISTS positive_events (
 CREATE INDEX IF NOT EXISTS idx_positive_events_job ON positive_events(job_key);
 '''
 
-EVENT_STRENGTH = {
-    'suitable': 4,
-    'applied': 5,
-    'interview': 9,
-    'offer': 14,
-}
-
+EVENT_STRENGTH = {'suitable': 4, 'applied': 5, 'interview': 9, 'offer': 14}
 EVENT_RANK = {'suitable': 1, 'applied': 2, 'interview': 3, 'offer': 4}
 
 STOPWORDS = {
@@ -87,7 +81,6 @@ def _extract_positive_rules(job: dict[str, Any], language_label: str, event_type
         rules.append({'scope': 'description', 'term': term, 'weight': max(2, base - 1)})
     if language_label in ('english_first', 'german_growth'):
         rules.append({'scope': 'language', 'term': language_label, 'weight': max(3, base)})
-    # Company affinity is only learned from stronger outcome signals.
     if event_type in ('interview', 'offer'):
         company = _normalise(job.get('company', ''))
         if company:
@@ -135,6 +128,19 @@ def record_positive_event(job_key: str, event_type: str) -> dict[str, Any]:
     return {'job_key': job_key, 'event_type': event_type, 'created': True, 'positive_rule_ids': ids}
 
 
+def sync_application_events() -> int:
+    """Import new Applied / Interview / Offer milestones once per job."""
+    ensure_positive_schema()
+    with connection() as con:
+        rows = con.execute("SELECT job_key,status FROM applications WHERE status IN ('applied','interview','offer')").fetchall()
+    created = 0
+    for row in rows:
+        result = record_positive_event(row['job_key'], row['status'])
+        if result['created']:
+            created += 1
+    return created
+
+
 def list_positive_rules() -> list[dict[str, Any]]:
     ensure_positive_schema()
     with connection() as con:
@@ -173,7 +179,6 @@ def apply_positive_boost(job, base_score: int) -> tuple[int, list[str]]:
             contribution = int(r['weight'])
             total_boost += contribution
             reasons.append(f"preferred: {r['scope']} '{r['term']}' +{contribution}")
-    # Prevent learned preferences from overwhelming the explicit scoring model.
     total_boost = min(30, total_boost)
     return min(100, score + total_boost), reasons
 
