@@ -24,6 +24,8 @@ def _now(): return datetime.now(timezone.utc).isoformat()
 def _normalise(text): return re.sub(r'\s+',' ',re.sub(r'[^a-zA-ZäöüÄÖÜß0-9+#./ -]+',' ',text or '').lower()).strip()
 
 def ensure_positive_schema():
+    from .profile_store import ensure_profile_schema
+    ensure_profile_schema()
     with connection() as con:
         con.executescript(POSITIVE_SCHEMA)
         cols={r[1] for r in con.execute('PRAGMA table_info(positive_rules)').fetchall()}
@@ -52,8 +54,7 @@ def _role_terms(title):
     return list(dict.fromkeys(t for t in out if len(t)>=4))[:2]
 
 def _extract_positive_rules(job,language_label,event_type):
-    base=EVENT_STRENGTH[event_type]; rules=[]
-    rules += [{'scope':'title','term':t,'weight':base} for t in _role_terms(job.get('title',''))]
+    base=EVENT_STRENGTH[event_type]; rules=[{'scope':'title','term':t,'weight':base} for t in _role_terms(job.get('title',''))]
     text=_normalise(f"{job.get('title','')} {job.get('description','')}")
     for term in [t for t in SKILL_TERMS if t in text][:4]: rules.append({'scope':'description','term':term,'weight':max(2,base-1)})
     if language_label in ('english_first','german_growth'): rules.append({'scope':'language','term':language_label,'weight':max(3,base)})
@@ -81,15 +82,21 @@ def record_positive_event(job_key,event_type,profile_id=1):
         con.execute('INSERT INTO positive_events(job_key,profile_id,event_type,created_at) VALUES(?,?,?,?)',(job_key,profile_id,event_type,_now()))
     return {'job_key':job_key,'profile_id':profile_id,'event_type':event_type,'created':True,'positive_rule_ids':ids}
 
+def _origin_profiles(job_key):
+    from .profile_store import get_profile
+    with connection() as con:
+        rows=con.execute("SELECT DISTINCT profile_id FROM positive_events WHERE job_key=? AND event_type='suitable'",(job_key,)).fetchall()
+    if rows: return [int(r['profile_id']) for r in rows]
+    default=get_profile(); return [default['id']] if default else [1]
+
 def sync_application_events(profile_ids=None):
     ensure_positive_schema()
-    if profile_ids is None:
-        from .profile_store import list_profiles
-        profile_ids=[p['id'] for p in list_profiles(enabled_only=True)]
     with connection() as con: rows=con.execute("SELECT job_key,status FROM applications WHERE status IN ('applied','interview','offer')").fetchall()
     milestones={'applied':('applied',),'interview':('applied','interview'),'offer':('applied','interview','offer')}; created=0
+    allowed=set(profile_ids or [])
     for row in rows:
-        for pid in profile_ids:
+        origins=_origin_profiles(row['job_key']); origins=[p for p in origins if not allowed or p in allowed]
+        for pid in origins:
             for event in milestones[row['status']]: created += 1 if record_positive_event(row['job_key'],event,pid)['created'] else 0
     return created
 
