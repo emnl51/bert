@@ -15,6 +15,10 @@ class Job:
     remote: bool = False
     score: int = 0
     reasons: list[str] = field(default_factory=list)
+    language_score: int = 55
+    overall_score: int = 0
+    language_label: str = 'unclear'
+    language_reasons: list[str] = field(default_factory=list)
 
     @property
     def key(self) -> str:
