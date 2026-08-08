@@ -1,5 +1,32 @@
 # Changelog
 
+## v16.3.0 — StepStone Experimental Source
+
+### Added
+
+- Experimental automated **StepStone Germany** provider
+- Dedicated StepStone configuration API and UI
+- Conservative request controls: max search terms, pages per term, results per term, timeout and request delay
+- StepStone manual-search fallback retained in Source Catalog
+- Parsing of StepStone job title, company, location, description snippet, publication text and remote/home-office signal
+- Preservation of `Werkstudent`, `Teilzeit`, `Minijob`, `Vollzeit` and hours-per-week signals for the strict employment-format gate
+- Parser and catalog regression tests
+- `beautifulsoup4` dependency for resilient HTML parsing
+
+### Safety / reliability
+
+- StepStone is disabled until explicitly configured
+- No CAPTCHA, proxy or anti-bot bypass is implemented
+- HTTP 403/429 is surfaced as a provider error instead of aggressive retrying
+- Empty/unparseable result pages fail safely instead of storing malformed jobs
+- Requests are sequential and can be delayed to reduce load
+- StepStone source testing is automatically constrained to one query and one result page
+
+### Versioning
+
+- Active application version: `16.3.0`
+- `/health` and `/api/v16-health` report the same centralized application version
+
 ## v16.2.1 — First Public Release
 
 JobTrack's first public release packages the current self-hosted job-search workflow into a Docker-first application with profile-aware filtering, ranking, automation, review and application tracking.
