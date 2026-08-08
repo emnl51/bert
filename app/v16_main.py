@@ -10,7 +10,7 @@ from .config import settings
 from .db import list_sources, save_source
 from .security import require_admin
 
-VERSION = '16.4.0'
+VERSION = '16.4.1'
 app = v15.app
 app.version = VERSION
 
