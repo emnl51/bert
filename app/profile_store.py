@@ -192,3 +192,25 @@ def profile_search_terms() -> list[str]:
     terms=[]
     for p in list_profiles(enabled_only=True): terms.extend((p.get('keywords') or {}).get('search',{}).keys())
     return list(dict.fromkeys(terms))
+
+
+def list_jobs_for_profile(profile_id: int, limit: int = 100, min_score: int = 0, decision: str = 'active', language: str = 'preferred') -> list[dict[str, Any]]:
+    ensure_profile_schema()
+    where=['s.profile_id=?','s.overall_score>=?']; params:[Any]=[profile_id,min_score]
+    if decision=='active': where.append("j.decision!='skip'")
+    elif decision in ('unreviewed','apply','maybe','skip'): where.append('j.decision=?'); params.append(decision)
+    if language=='preferred': where.append("s.language_label!='german_heavy'")
+    elif language in ('english_first','german_growth','stretch','german_heavy','unclear'): where.append('s.language_label=?'); params.append(language)
+    params.append(limit)
+    with connection() as con:
+        rows=con.execute(f'''SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.created_at,j.first_seen,j.decision,j.decision_at,
+                                   s.job_score AS score,s.language_score,s.overall_score,s.language_label,s.reasons_json,s.language_reasons_json,
+                                   a.status AS application_status,a.applied_at
+                            FROM job_profile_scores s JOIN jobs j ON j.job_key=s.job_key
+                            LEFT JOIN applications a ON a.job_key=j.job_key
+                            WHERE {' AND '.join(where)}
+                            ORDER BY j.first_seen DESC,s.overall_score DESC LIMIT ?''',params).fetchall()
+    out=[]
+    for row in rows:
+        item=dict(row); item['reasons']=json.loads(item.pop('reasons_json') or '[]'); item['language_reasons']=json.loads(item.pop('language_reasons_json') or '[]'); out.append(item)
+    return out
