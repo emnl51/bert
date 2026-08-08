@@ -34,7 +34,9 @@ def test_jobspy_registered_and_catalogued():
 
 
 def test_jobspy_maps_rows(monkeypatch):
-    monkeypatch.setattr(jobspy_provider, '_scrape_one', lambda term, source, location: FakeFrame())
+    # v13 isolates scraping per query and per site, so the scraper helper receives
+    # the selected site explicitly.
+    monkeypatch.setattr(jobspy_provider, '_scrape_one', lambda term, site, source, location: FakeFrame())
     source = {
         'name': 'JobSpy Multi-board',
         'config': {'sites': ['linkedin', 'indeed', 'google'], 'max_search_terms': 1},
@@ -44,3 +46,19 @@ def test_jobspy_maps_rows(monkeypatch):
     assert jobs[0].title == 'Working Student Supply Chain'
     assert jobs[0].source == 'JobSpy Multi-board / indeed'
     assert jobs[1].source == 'JobSpy Multi-board / linkedin'
+
+
+def test_jobspy_site_failure_does_not_block_other_sites(monkeypatch):
+    def fake_scrape(term, site, source, location):
+        if site == 'linkedin':
+            raise RuntimeError('blocked')
+        return FakeFrame()
+
+    monkeypatch.setattr(jobspy_provider, '_scrape_one', fake_scrape)
+    source = {
+        'name': 'JobSpy Multi-board',
+        'config': {'sites': ['linkedin', 'indeed'], 'max_search_terms': 1},
+    }
+    jobs = asyncio.run(jobspy_provider.fetch_jobspy(source, ['supply chain'], 'Berlin'))
+    assert len(jobs) == 2
+    assert any(job.source.endswith('/ indeed') for job in jobs)
