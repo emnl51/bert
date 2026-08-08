@@ -1,4 +1,4 @@
-# JobTrack 16.2
+# JobTrack 
 
 Self-hosted job discovery, filtering, ranking, scheduled search, application tracking and job-search intelligence for Berlin/Brandenburg and configurable target locations.
 
