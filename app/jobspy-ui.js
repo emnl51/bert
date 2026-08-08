@@ -16,6 +16,7 @@
     const results = Number(prompt('Results per search term (1-100)', cfg.results_per_term || 20));
     const hours = Number(prompt('Only jobs newer than N hours', cfg.hours_old || 168));
     const maxTerms = Number(prompt('Maximum search terms per run (1-20)', cfg.max_search_terms || 6));
+    const timeoutSeconds = Number(prompt('Timeout per site/query in seconds (10-180)', cfg.timeout_seconds || 60));
     const fetchDesc = confirm('Fetch full LinkedIn descriptions? This is slower and increases blocking risk.\n\nOK = Yes, Cancel = No');
     const enable = confirm('Enable JobSpy automatic scraping now?\n\nRecommended: first save disabled, then enable after a successful source test.\n\nOK = Enable, Cancel = Save disabled');
     await api('/api/jobspy/source', {method:'PUT', body:JSON.stringify({
@@ -23,6 +24,7 @@
       results_per_term:Number.isFinite(results)?Math.max(1,Math.min(100,results)):20,
       hours_old:Number.isFinite(hours)?Math.max(1,Math.min(720,hours)):168,
       max_search_terms:Number.isFinite(maxTerms)?Math.max(1,Math.min(20,maxTerms)):6,
+      timeout_seconds:Number.isFinite(timeoutSeconds)?Math.max(10,Math.min(180,timeoutSeconds)):60,
       linkedin_fetch_description:fetchDesc
     })});
     toast(`JobSpy saved${enable?' and enabled':' (disabled)'}`);
