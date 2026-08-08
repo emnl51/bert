@@ -1,5 +1,6 @@
 from .db import create_run, finish_run, mark_notified, upsert_job
 from .notifier import send_email, send_telegram
+from .language_store import upsert_language_fit
 from .providers import fetch_all_jobs
 from .ranker import assess_language_fit, calculate_overall_score, score_job
 from .runtime import runtime_config
@@ -25,6 +26,7 @@ async def run_search() -> dict:
             job.language_score, job.language_label, job.language_reasons = assess_language_fit(job, language_profile)
             job.overall_score = calculate_overall_score(job.score, job.language_score, cfg['language_weight'])
             is_new = upsert_job(job)
+            upsert_language_fit(job)
             eligible_language = job.language_score >= cfg['min_language_score']
             if cfg['hide_german_heavy'] and job.language_label == 'german_heavy':
                 eligible_language = False
