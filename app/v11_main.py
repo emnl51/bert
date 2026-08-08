@@ -33,7 +33,7 @@ app.router.routes[:] = [r for r in app.router.routes if not (getattr(r,'path',No
 @app.get('/',response_class=HTMLResponse)
 def dashboard(request:Request,_:str=Depends(require_admin)):
     html=Path('app/templates/index.html').read_text(encoding='utf-8').replace('{{ app_name }}',settings.app_name)
-    scripts='<script src="/language-ui.js"></script><script src="/source-ui.js"></script><script src="/review-ui.js"></script><script src="/profile-ui.js"></script><script src="/search-job-ui.js"></script><script src="/intelligence-ui.js"></script>'
+    scripts='<script src="/language-ui.js"></script><script src="/source-ui.js"></script><script src="/review-ui.js"></script><script src="/profile-ui.js"></script><script src="/search-job-ui.js"></script><script src="/intelligence-ui.js"></script><script src="/intelligence-settings-ui.js"></script>'
     return HTMLResponse(html.replace('</body>',scripts+'</body>'))
 
 class CandidatePayload(BaseModel):
@@ -57,6 +57,10 @@ class IntelligenceSettingsPayload(BaseModel):
 @app.get('/intelligence-ui.js')
 def intelligence_ui(_:str=Depends(require_admin)):
     return Response(Path('app/intelligence-ui.js').read_text(encoding='utf-8'),media_type='application/javascript')
+
+@app.get('/intelligence-settings-ui.js')
+def intelligence_settings_ui(_:str=Depends(require_admin)):
+    return Response(Path('app/intelligence-settings-ui.js').read_text(encoding='utf-8'),media_type='application/javascript')
 
 @app.get('/api/candidates')
 def api_candidates(_:str=Depends(require_admin)):
