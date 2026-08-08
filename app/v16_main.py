@@ -8,8 +8,9 @@ from . import v15_main as v15
 from .config import settings
 from .security import require_admin
 
+VERSION = '16.3.0'
 app = v15.app
-app.version = '16.3.0'
+app.version = VERSION
 
 # Replace the inherited dashboard and public health routes so the active shell and
 # monitoring endpoint always report the current release instead of an older base layer.
@@ -27,7 +28,7 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
     html = Path('app/templates/index.html').read_text(encoding='utf-8').replace('{{ app_name }}', settings.app_name)
     html = html.replace(
         'Supply Chain Tracker<small>Berlin / Brandenburg · v3</small>',
-        'JobTrack<small>Smart Job Search · v16.3</small>',
+        f'JobTrack<small>Smart Job Search · v{VERSION}</small>',
     )
     scripts = (
         '<script src="/language-ui.js"></script>'
@@ -50,7 +51,7 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
 
 @app.get('/health')
 def health():
-    return {'status': 'ok', 'version': '16.3.0'}
+    return {'status': 'ok', 'version': app.version}
 
 
 @app.get('/stepstone-ui.js')
@@ -94,7 +95,7 @@ def apple_touch_icon():
 def v16_health(_: str = Depends(require_admin)):
     return {
         'status': 'ok',
-        'version': '16.3.0',
+        'version': app.version,
         'responsive_ui': True,
         'mobile_navigation': True,
         'mobile_tables': True,
