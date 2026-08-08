@@ -5,7 +5,7 @@ from .models import Job
 
 
 def build_text_digest(jobs: list[Job]) -> str:
-    lines = [f'Berlin Supply Chain Tracker — {len(jobs)} new matches', '']
+    lines = [f'JobTrack — {len(jobs)} new matches', '']
     for i, job in enumerate(jobs, 1):
         why = ', '.join(job.reasons[:5])
         lines.extend([
@@ -53,12 +53,12 @@ async def test_telegram(cfg: dict) -> bool:
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(f'https://api.telegram.org/bot{token}/sendMessage', json={
             'chat_id': chat_id,
-            'text': 'Berlin Supply Chain Tracker: Telegram connection test successful.',
+            'text': 'JobTrack: Telegram connection test successful.',
         })
         response.raise_for_status()
     return True
 
 
 def test_email(cfg: dict) -> bool:
-    sample = Job(source='test', external_id='test', title='Connection Test', company='Berlin Supply Chain Tracker', location='Berlin', url='https://example.com', score=100, reasons=['SMTP connection test'])
+    sample = Job(source='test', external_id='test', title='Connection Test', company='JobTrack', location='Berlin', url='https://example.com', score=100, reasons=['SMTP connection test'])
     return send_email([sample], cfg)
