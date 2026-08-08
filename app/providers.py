@@ -3,6 +3,7 @@ from urllib.parse import urlencode
 import feedparser
 import httpx
 from .models import Job
+from .source_catalog import render_search_url
 
 
 def _stable_id(*parts: str) -> str:
@@ -17,7 +18,7 @@ async def fetch_arbeitnow(source: dict, search_terms: list[str], target_location
             response = await client.get(
                 'https://www.arbeitnow.com/api/job-board-api',
                 params={'page': page},
-                headers={'User-Agent': 'BerlinSupplyChainTracker/3.0'},
+                headers={'User-Agent': 'JobTrack/5.0'},
             )
             response.raise_for_status()
             for item in response.json().get('data', []):
@@ -75,7 +76,7 @@ async def fetch_rss(source: dict, search_terms: list[str], target_location: str)
         raise RuntimeError('RSS/Atom URL is empty')
     default_location = config.get('default_location', '')
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        response = await client.get(url, headers={'User-Agent': 'BerlinSupplyChainTracker/3.0'})
+        response = await client.get(url, headers={'User-Agent': 'JobTrack/5.0'})
         response.raise_for_status()
     parsed = feedparser.parse(response.content)
     jobs: list[Job] = []
@@ -94,7 +95,120 @@ async def fetch_rss(source: dict, search_terms: list[str], target_location: str)
     return jobs
 
 
-PROVIDERS = {'arbeitnow': fetch_arbeitnow, 'adzuna': fetch_adzuna, 'rss': fetch_rss}
+async def fetch_search_link(source: dict, search_terms: list[str], target_location: str) -> list[Job]:
+    return []
+
+
+async def fetch_jooble(source: dict, search_terms: list[str], target_location: str) -> list[Job]:
+    api_key = source.get('secrets', {}).get('api_key', '')
+    if not api_key:
+        raise RuntimeError('Jooble API key is not configured')
+    config = source.get('config', {})
+    radius = str(config.get('radius', 40))
+    result_count = max(1, min(int(config.get('results_per_term', 20)), 50))
+    jobs: list[Job] = []
+    seen: set[str] = set()
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for term in search_terms:
+            response = await client.post(
+                f'https://jooble.org/api/{api_key}',
+                json={'keywords': term, 'location': target_location, 'radius': radius, 'ResultOnPage': result_count},
+                headers={'Content-Type': 'application/json', 'User-Agent': 'JobTrack/5.0'},
+            )
+            response.raise_for_status()
+            for item in response.json().get('jobs', []):
+                url = item.get('link') or ''
+                external_id = str(item.get('id') or _stable_id(item.get('title', ''), item.get('company', ''), url))
+                if external_id in seen:
+                    continue
+                seen.add(external_id)
+                jobs.append(Job(
+                    source=source['name'], external_id=external_id, title=item.get('title') or '',
+                    company=item.get('company') or '', location=item.get('location') or target_location,
+                    url=url, description=item.get('snippet') or '', created_at=item.get('updated') or '', remote=False,
+                ))
+    return jobs
+
+
+async def fetch_greenhouse(source: dict, search_terms: list[str], target_location: str) -> list[Job]:
+    token = source.get('config', {}).get('board_token', '').strip()
+    if not token:
+        raise RuntimeError('Greenhouse board token is missing')
+    url = f'https://boards-api.greenhouse.io/v1/boards/{token}/jobs'
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        response = await client.get(url, params={'content': 'true'}, headers={'User-Agent': 'JobTrack/5.0'})
+        response.raise_for_status()
+    jobs: list[Job] = []
+    for item in response.json().get('jobs', []):
+        loc = (item.get('location') or {}).get('name', '')
+        jobs.append(Job(
+            source=source['name'], external_id=str(item.get('id') or _stable_id(item.get('title',''), item.get('absolute_url',''))),
+            title=item.get('title') or '', company=source.get('config', {}).get('company_name', token),
+            location=loc, url=item.get('absolute_url') or '', description=item.get('content') or '',
+            created_at=item.get('updated_at') or '', remote='remote' in loc.lower(),
+        ))
+    return jobs
+
+
+async def fetch_lever(source: dict, search_terms: list[str], target_location: str) -> list[Job]:
+    site = source.get('config', {}).get('site', '').strip()
+    if not site:
+        raise RuntimeError('Lever site slug is missing')
+    url = f'https://api.lever.co/v0/postings/{site}'
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        response = await client.get(url, params={'mode': 'json'}, headers={'User-Agent': 'JobTrack/5.0'})
+        response.raise_for_status()
+    jobs: list[Job] = []
+    for item in response.json():
+        categories = item.get('categories') or {}
+        loc = categories.get('location') or ''
+        lists = item.get('lists') or []
+        description = ' '.join([item.get('descriptionPlain') or '', *[(x.get('text') or '') + ' ' + (x.get('content') or '') for x in lists]])
+        jobs.append(Job(
+            source=source['name'], external_id=str(item.get('id') or _stable_id(item.get('text',''), item.get('hostedUrl',''))),
+            title=item.get('text') or '', company=source.get('config', {}).get('company_name', site),
+            location=loc, url=item.get('hostedUrl') or item.get('applyUrl') or '', description=description,
+            created_at=str(item.get('createdAt') or ''), remote='remote' in loc.lower(),
+        ))
+    return jobs
+
+
+async def fetch_smartrecruiters(source: dict, search_terms: list[str], target_location: str) -> list[Job]:
+    company = source.get('config', {}).get('company_identifier', '').strip()
+    if not company:
+        raise RuntimeError('SmartRecruiters company identifier is missing')
+    base = f'https://api.smartrecruiters.com/v1/companies/{company}/postings'
+    jobs: list[Job] = []
+    offset = 0
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        while offset < 300:
+            response = await client.get(base, params={'limit': 100, 'offset': offset}, headers={'User-Agent': 'JobTrack/5.0'})
+            response.raise_for_status()
+            data = response.json()
+            content = data.get('content', [])
+            for item in content:
+                loc_obj = item.get('location') or {}
+                loc = ', '.join(str(loc_obj.get(k) or '') for k in ('city','region','country') if loc_obj.get(k))
+                job_url = item.get('ref') or item.get('applyUrl') or ''
+                job_ad = item.get('jobAd') if isinstance(item.get('jobAd'), dict) else {}
+                description = (((job_ad.get('sections') or {}).get('jobDescription') or {}).get('text') or '')
+                jobs.append(Job(
+                    source=source['name'], external_id=str(item.get('id') or item.get('uuid') or _stable_id(item.get('name',''), job_url)),
+                    title=item.get('name') or item.get('title') or '', company=source.get('config', {}).get('company_name', company),
+                    location=loc, url=job_url, description=description,
+                    created_at=item.get('releasedDate') or '', remote='remote' in loc.lower(),
+                ))
+            offset += len(content)
+            if not content or offset >= int(data.get('totalFound') or 0):
+                break
+    return jobs
+
+
+PROVIDERS = {
+    'arbeitnow': fetch_arbeitnow, 'adzuna': fetch_adzuna, 'rss': fetch_rss,
+    'search_link': fetch_search_link, 'jooble': fetch_jooble, 'greenhouse': fetch_greenhouse,
+    'lever': fetch_lever, 'smartrecruiters': fetch_smartrecruiters,
+}
 
 
 async def fetch_all_jobs(sources: list[dict], search_terms: list[str], target_location: str) -> tuple[list[Job], list[str]]:
@@ -118,12 +232,15 @@ async def test_source(source: dict, search_terms: list[str], target_location: st
     provider = PROVIDERS.get(source['source_type'])
     if not provider:
         raise RuntimeError('Unsupported source type')
-    # Reduce test load where possible.
     test_copy = {**source, 'config': dict(source.get('config', {}))}
     if source['source_type'] == 'arbeitnow':
         test_copy['config']['pages'] = 1
     if source['source_type'] == 'adzuna':
         test_copy['config']['results_per_term'] = min(5, int(test_copy['config'].get('results_per_term', 5)))
         search_terms = search_terms[:1]
+    if source['source_type'] == 'search_link':
+        query = search_terms[0] if search_terms else 'jobs'
+        template = source.get('config', {}).get('url_template', '')
+        return {'ok': True, 'count': 0, 'mode': 'search-only', 'search_url': render_search_url(template, query, target_location) if template else ''}
     jobs = await provider(test_copy, search_terms[:2], target_location)
     return {'ok': True, 'count': len(jobs), 'sample': [{'title': j.title, 'company': j.company, 'location': j.location} for j in jobs[:3]]}
