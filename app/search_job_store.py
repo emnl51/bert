@@ -48,6 +48,17 @@ CREATE TABLE IF NOT EXISTS search_job_runs (
     FOREIGN KEY(search_job_id) REFERENCES search_jobs(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_search_job_runs_job ON search_job_runs(search_job_id,id DESC);
+
+CREATE TABLE IF NOT EXISTS search_job_seen (
+    search_job_id INTEGER NOT NULL,
+    job_key TEXT NOT NULL,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    PRIMARY KEY(search_job_id,job_key),
+    FOREIGN KEY(search_job_id) REFERENCES search_jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY(job_key) REFERENCES jobs(job_key) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_search_job_seen_job ON search_job_seen(job_key);
 '''
 
 SECRET_FIELDS = {'telegram_bot_token','smtp_password'}
@@ -130,6 +141,17 @@ def save_search_job(data: dict[str, Any], job_id: int | None = None) -> int:
 def delete_search_job(job_id: int) -> None:
     ensure_search_job_schema()
     with connection() as con: con.execute('DELETE FROM search_jobs WHERE id=?',(job_id,))
+
+
+def mark_search_job_seen(search_job_id: int, job_key: str) -> bool:
+    now=_now()
+    with connection() as con:
+        row=con.execute('SELECT first_seen FROM search_job_seen WHERE search_job_id=? AND job_key=?',(search_job_id,job_key)).fetchone()
+        if row:
+            con.execute('UPDATE search_job_seen SET last_seen=? WHERE search_job_id=? AND job_key=?',(now,search_job_id,job_key))
+            return False
+        con.execute('INSERT INTO search_job_seen(search_job_id,job_key,first_seen,last_seen) VALUES(?,?,?,?)',(search_job_id,job_key,now,now))
+        return True
 
 
 def create_search_job_run(job_id: int) -> int:
