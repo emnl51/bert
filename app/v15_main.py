@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import Depends, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from starlette.requests import Request
 
 from . import v14_main as v14
@@ -42,13 +42,27 @@ def log_ui(_: str = Depends(require_admin)):
 
 @app.get('/api/logs')
 def api_logs(
-    limit: int = Query(300, ge=1, le=1000),
+    limit: int = Query(300, ge=1, le=2000),
     level: str = Query('', max_length=20),
     q: str = Query('', max_length=200),
+    logger_name: str = Query('', max_length=120),
     after_id: int = Query(0, ge=0),
     _: str = Depends(require_admin),
 ):
-    return {'logs': list_logs(limit=limit, level=level, query=q, after_id=after_id), 'stats': log_stats()}
+    return {'logs': list_logs(limit=limit, level=level, query=q, logger_name=logger_name, after_id=after_id), 'stats': log_stats()}
+
+
+@app.get('/api/logs/export', response_class=PlainTextResponse)
+def api_export_logs(
+    limit: int = Query(1000, ge=1, le=2000),
+    level: str = Query('', max_length=20),
+    q: str = Query('', max_length=200),
+    logger_name: str = Query('', max_length=120),
+    _: str = Depends(require_admin),
+):
+    rows = list_logs(limit=limit, level=level, query=q, logger_name=logger_name)
+    text = '\n'.join(f"{r['timestamp']} {r['level']:<8} {r['logger']} {r['message']}" for r in rows)
+    return PlainTextResponse(text, headers={'Content-Disposition': 'attachment; filename="jobtrack-logs.txt"'})
 
 
 @app.delete('/api/logs')
