@@ -53,6 +53,7 @@ class IntelligenceSettingsPayload(BaseModel):
     ollama_enabled:bool=False
     ollama_url:str='http://host.docker.internal:11434'
     ollama_model:str='gemma3'
+    ollama_timeout_seconds:int=Field(default=60,ge=10,le=120)
 
 @app.get('/intelligence-ui.js')
 def intelligence_ui(_:str=Depends(require_admin)):
@@ -94,15 +95,30 @@ def get_search_job_candidate(search_job_id:int,_:str=Depends(require_admin)):
 
 @app.get('/api/intelligence/settings')
 def intelligence_settings(_:str=Depends(require_admin)):
-    return {'ollama_enabled':get_setting('intelligence_ollama_enabled','false').lower() in ('1','true','yes','on'),'ollama_url':get_setting('intelligence_ollama_url','http://host.docker.internal:11434'),'ollama_model':get_setting('intelligence_ollama_model','gemma3')}
+    return {
+        'ollama_enabled':get_setting('intelligence_ollama_enabled','false').lower() in ('1','true','yes','on'),
+        'ollama_url':get_setting('intelligence_ollama_url','http://host.docker.internal:11434'),
+        'ollama_model':get_setting('intelligence_ollama_model','gemma3'),
+        'ollama_timeout_seconds':int(get_setting('intelligence_ollama_timeout_seconds','60') or 60),
+        'deterministic_weight':70,
+        'ai_weight':30,
+        'engine':'hybrid-v2',
+    }
 
 @app.put('/api/intelligence/settings')
 def update_intelligence_settings(payload:IntelligenceSettingsPayload,_:str=Depends(require_admin)):
-    set_setting('intelligence_ollama_enabled',str(payload.ollama_enabled).lower()); set_setting('intelligence_ollama_url',payload.ollama_url.strip()); set_setting('intelligence_ollama_model',payload.ollama_model.strip()); return {'ok':True}
+    set_setting('intelligence_ollama_enabled',str(payload.ollama_enabled).lower())
+    set_setting('intelligence_ollama_url',payload.ollama_url.strip())
+    set_setting('intelligence_ollama_model',payload.ollama_model.strip())
+    set_setting('intelligence_ollama_timeout_seconds',str(payload.ollama_timeout_seconds))
+    return {'ok':True}
 
 @app.post('/api/intelligence/analyze')
 def analyze(payload:dict[str,Any],_:str=Depends(require_admin)):
-    try:return {'ok':True,'analysis':analyze_job(str(payload['job_key']),int(payload['candidate_profile_id']),payload.get('search_job_id'))}
+    try:
+        return {'ok':True,'analysis':analyze_job(
+            str(payload['job_key']),int(payload['candidate_profile_id']),payload.get('search_job_id'),bool(payload.get('force',False))
+        )}
     except (KeyError,ValueError) as exc: raise HTTPException(400,str(exc)) from exc
 
 @app.get('/api/intelligence')
