@@ -1,4 +1,4 @@
-# JobTrack 
+# JobTrack
 
 Self-hosted job discovery, filtering, ranking, scheduled search, application tracking and job-search intelligence for Berlin/Brandenburg and configurable target locations.
 
@@ -245,7 +245,7 @@ docker compose exec tracker python -c "import app.v16_main; print(app.v16_main.a
 Expected application version:
 
 ```text
-16.2.0
+16.2.1
 ```
 
 ## Development and CI
