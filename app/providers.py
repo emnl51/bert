@@ -5,6 +5,7 @@ import feedparser
 import httpx
 from .models import Job
 from .source_catalog import render_search_url
+from .stepstone_provider import fetch_stepstone
 
 
 def _stable_id(*parts: str) -> str:
@@ -117,7 +118,7 @@ async def fetch_smartrecruiters(source: dict, search_terms: list[str], target_lo
     return jobs
 
 
-PROVIDERS={'arbeitnow':fetch_arbeitnow,'adzuna':fetch_adzuna,'rss':fetch_rss,'search_link':fetch_search_link,'jooble':fetch_jooble,'greenhouse':fetch_greenhouse,'lever':fetch_lever,'smartrecruiters':fetch_smartrecruiters}
+PROVIDERS={'arbeitnow':fetch_arbeitnow,'adzuna':fetch_adzuna,'rss':fetch_rss,'search_link':fetch_search_link,'jooble':fetch_jooble,'greenhouse':fetch_greenhouse,'lever':fetch_lever,'smartrecruiters':fetch_smartrecruiters,'stepstone':fetch_stepstone}
 
 
 async def fetch_all_jobs(sources:list[dict],search_terms:list[str],target_location:str)->tuple[list[Job],list[str]]:
@@ -138,6 +139,9 @@ async def test_source(source:dict,search_terms:list[str],target_location:str)->d
     test_copy={**source,'config':dict(source.get('config',{}))}
     if source['source_type']=='arbeitnow': test_copy['config']['pages']=1
     if source['source_type']=='adzuna': test_copy['config']['results_per_term']=min(5,int(test_copy['config'].get('results_per_term',5))); search_terms=search_terms[:1]
+    if source['source_type']=='stepstone':
+        test_copy['config'].update({'max_search_terms':1,'pages_per_term':1,'results_per_term':min(10,int(test_copy['config'].get('results_per_term',10)))})
+        search_terms=search_terms[:1]
     if source['source_type']=='search_link':
         query=search_terms[0] if search_terms else 'jobs'; template=source.get('config',{}).get('url_template','')
         return {'ok':True,'count':0,'mode':'search-only','search_url':render_search_url(template,query,target_location) if template else ''}
