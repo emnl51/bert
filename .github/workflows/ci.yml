@@ -24,6 +24,12 @@ jobs:
       - name: Compile Python
         run: python -m compileall -q app tests
 
+      - name: Check JavaScript syntax
+        run: |
+          for file in app/*.js; do
+            node --check "$file"
+          done
+
       - name: Run tests
         env:
           APP_SECRET_KEY: ci-test-secret-key
