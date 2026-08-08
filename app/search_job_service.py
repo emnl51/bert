@@ -1,5 +1,6 @@
 from copy import deepcopy
 from .db import list_sources, mark_notified, upsert_job
+from .employment_filter import assess_employment_fit, search_terms_for_profile
 from .language_store import upsert_language_fit
 from .notifier import send_email, send_telegram
 from .positive_learning import apply_positive_boost, sync_application_events
@@ -40,7 +41,7 @@ async def run_search_job(search_job_id: int) -> dict:
         profile = get_profile(int(search_job['profile_id']))
         if not profile: raise ValueError('Search profile not found')
         candidate = candidate_for_search_job(search_job_id)
-        search_terms = list((profile.get('keywords') or {}).get('search',{}).keys())
+        search_terms = search_terms_for_profile(profile)
         sources = _selected_sources(search_job)
         fetched, provider_errors = await fetch_all_jobs(sources, search_terms, search_job['target_location'])
         matches=[]
@@ -54,13 +55,19 @@ async def run_search_job(search_job_id: int) -> dict:
         for source_job in fetched:
             job = deepcopy(source_job)
             job.score, job.reasons = score_job(job, profile['keywords'], location_terms)
+            employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile)
+            job.reasons.extend(employment_reasons)
             job.language_score, job.language_label, job.language_reasons = assess_language_fit(job, language_profile)
             job.score, neg = apply_learned_penalty(job, job.score, profile_id=profile['id']); job.reasons.extend(neg)
             job.score, pos = apply_positive_boost(job, job.score, profile_id=profile['id']); job.reasons.extend(pos)
-            job.overall_score = calculate_overall_score(job.score, job.language_score, profile['language_weight'])
+            if not employment_ok:
+                job.score = 0
+                job.overall_score = 0
+            else:
+                job.overall_score = calculate_overall_score(job.score, job.language_score, profile['language_weight'])
             upsert_job(job); upsert_language_fit(job); upsert_profile_score(job, profile['id'])
             fresh_for_this_search = mark_search_job_seen(search_job_id, job.key)
-            eligible = job.language_score >= min_lang and job.overall_score >= min_score
+            eligible = employment_ok and job.language_score >= min_lang and job.overall_score >= min_score
             if profile['hide_german_heavy'] and job.language_label == 'german_heavy': eligible=False
             if not profile['show_b2_stretch'] and job.language_label == 'stretch': eligible=False
             if eligible and candidate:
