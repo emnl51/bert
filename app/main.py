@@ -17,6 +17,10 @@ from .db import (
     list_applications, list_jobs, list_keywords, list_runs, list_sources, save_application, save_keyword,
     save_source, set_job_decision, set_setting,
 )
+from .feedback_store import (
+    delete_rule, ensure_feedback_schema, feedback_stats, list_feedback, list_learned_rules,
+    record_feedback, set_rule_enabled,
+)
 from .notifier import test_email, test_telegram
 from .language_store import ensure_language_schema, enrich_applications, list_jobs_with_language
 from .providers import test_source
@@ -58,6 +62,7 @@ def reschedule() -> None:
 async def lifespan(app: FastAPI):
     init_db()
     ensure_language_schema()
+    ensure_feedback_schema()
     reschedule()
     scheduler.start()
     if settings.run_on_start:
@@ -66,7 +71,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title=settings.app_name, version='5.0.0', lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version='7.0.0', lifespan=lifespan)
 
 
 class AppSettingsPayload(BaseModel):
@@ -127,17 +132,28 @@ class ApplicationPayload(BaseModel):
     applied_at: str | None = None
 
 
+class FeedbackPayload(BaseModel):
+    suitability: str
+    reason: str = ''
+    note: str = Field(default='', max_length=2000)
+    learn: bool = True
+
+
+class RuleTogglePayload(BaseModel):
+    enabled: bool
+
+
 @app.get('/health')
 def health():
     job = scheduler.get_job(JOB_ID)
-    return {'status': 'ok', 'next_run': job.next_run_time.isoformat() if job and job.next_run_time else None}
+    return {'status': 'ok', 'version': '7.0.0', 'next_run': job.next_run_time.isoformat() if job and job.next_run_time else None}
 
 
 @app.get('/', response_class=HTMLResponse)
 def dashboard(request: Request, _: str = Depends(require_admin)):
     html = Path('app/templates/index.html').read_text(encoding='utf-8')
     html = html.replace('{{ app_name }}', settings.app_name)
-    html = html.replace('</body>', '<script src="/language-ui.js"></script><script src="/source-ui.js"></script></body>')
+    html = html.replace('</body>', '<script src="/language-ui.js"></script><script src="/source-ui.js"></script><script src="/review-ui.js"></script></body>')
     return HTMLResponse(html)
 
 
@@ -151,12 +167,17 @@ def source_ui(_: str = Depends(require_admin)):
     return Response(Path('app/source-ui.js').read_text(encoding='utf-8'), media_type='application/javascript')
 
 
+@app.get('/review-ui.js')
+def review_ui(_: str = Depends(require_admin)):
+    return Response(Path('app/review-ui.js').read_text(encoding='utf-8'), media_type='application/javascript')
+
+
 @app.get('/api/overview')
 def overview(_: str = Depends(require_admin)):
     job = scheduler.get_job(JOB_ID)
     runs = list_runs(limit=1)
     return {
-        'stats': dashboard_stats(),
+        'stats': {**dashboard_stats(), **feedback_stats()},
         'next_run': job.next_run_time.isoformat() if job and job.next_run_time else None,
         'last_run': runs[0] if runs else None,
         'security': {
@@ -321,6 +342,31 @@ def update_job_decision(job_key: str, payload: JobDecisionPayload, _: str = Depe
     except ValueError as exc:
         raise HTTPException(400 if str(exc) == 'Invalid decision' else 404, str(exc)) from exc
     return {'ok': True, **result}
+
+
+@app.post('/api/jobs/{job_key:path}/feedback')
+def add_job_feedback(job_key: str, payload: FeedbackPayload, _: str = Depends(require_admin)):
+    try:
+        return {'ok': True, **record_feedback(job_key, payload.suitability, payload.reason, payload.note, payload.learn)}
+    except ValueError as exc:
+        raise HTTPException(400 if str(exc) == 'Invalid suitability' else 404, str(exc)) from exc
+
+
+@app.get('/api/learning')
+def learning(_: str = Depends(require_admin)):
+    return {'stats': feedback_stats(), 'rules': list_learned_rules(), 'feedback': list_feedback(100)}
+
+
+@app.put('/api/learning/rules/{rule_id}')
+def toggle_learning_rule(rule_id: int, payload: RuleTogglePayload, _: str = Depends(require_admin)):
+    set_rule_enabled(rule_id, payload.enabled)
+    return {'ok': True}
+
+
+@app.delete('/api/learning/rules/{rule_id}')
+def remove_learning_rule(rule_id: int, _: str = Depends(require_admin)):
+    delete_rule(rule_id)
+    return {'ok': True}
 
 
 @app.get('/api/applications')
