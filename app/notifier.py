@@ -23,6 +23,14 @@ def build_text_digest(jobs: list[Job], title: str = 'JobTrack') -> str:
             f'   {job.company} | {job.location}',
             f'   Overall {job.overall_score}/100 | Job {job.score}/100 | Language {job.language_score}/100',
             f'   Language: {LABELS.get(job.language_label, job.language_label)}',
+        ])
+        intel = getattr(job, 'intelligence', None)
+        if intel:
+            lines.extend([
+                f"   CV Match: {intel.get('cv_match', 0)}/100 | Recommendation: {str(intel.get('recommendation','maybe')).upper()}",
+                f"   CV: {intel.get('summary','')}",
+            ])
+        lines.extend([
             f'   Why: {why}',
             f'   Language fit: {language_why}',
             f'   {job.url}', '',
