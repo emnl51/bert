@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 from fastapi import Depends, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
+from starlette.requests import Request
 
 from . import v10_main as v10
 from .candidate_store import (
@@ -12,6 +14,7 @@ from .candidate_store import (
 from .intelligence import analyze_job, ensure_intelligence_schema, get_analysis, list_analyses
 from .search_job_store import get_search_job
 from .security import require_admin
+from .config import settings
 
 app=v10.app
 _original_lifespan=app.router.lifespan_context
@@ -23,6 +26,15 @@ async def v11_lifespan(application):
 
 app.router.lifespan_context=v11_lifespan
 app.version='11.0.0'
+
+# Replace the legacy dashboard route so all extension UIs are guaranteed to load.
+app.router.routes[:] = [r for r in app.router.routes if not (getattr(r,'path',None)=='/' and 'GET' in (getattr(r,'methods',set()) or set()))]
+
+@app.get('/',response_class=HTMLResponse)
+def dashboard(request:Request,_:str=Depends(require_admin)):
+    html=Path('app/templates/index.html').read_text(encoding='utf-8').replace('{{ app_name }}',settings.app_name)
+    scripts='<script src="/language-ui.js"></script><script src="/source-ui.js"></script><script src="/review-ui.js"></script><script src="/profile-ui.js"></script><script src="/search-job-ui.js"></script><script src="/intelligence-ui.js"></script>'
+    return HTMLResponse(html.replace('</body>',scripts+'</body>'))
 
 class CandidatePayload(BaseModel):
     name:str=Field(min_length=1,max_length=120)
@@ -39,7 +51,6 @@ class CandidateAssignmentPayload(BaseModel):
 
 @app.get('/intelligence-ui.js')
 def intelligence_ui(_:str=Depends(require_admin)):
-    from pathlib import Path
     return Response(Path('app/intelligence-ui.js').read_text(encoding='utf-8'),media_type='application/javascript')
 
 @app.get('/api/candidates')
