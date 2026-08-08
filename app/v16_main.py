@@ -11,16 +11,24 @@ from .security import require_admin
 app = v15.app
 app.version = '16.2.0'
 
-# Replace only the dashboard route so the responsive shell loads after all feature UIs.
+# Replace the inherited dashboard and public health routes so the active shell and
+# monitoring endpoint always report the current release instead of an older base layer.
 app.router.routes[:] = [
     r for r in app.router.routes
-    if not (getattr(r, 'path', None) == '/' and 'GET' in (getattr(r, 'methods', set()) or set()))
+    if not (
+        getattr(r, 'path', None) in {'/', '/health'}
+        and 'GET' in (getattr(r, 'methods', set()) or set())
+    )
 ]
 
 
 @app.get('/', response_class=HTMLResponse)
 def dashboard(request: Request, _: str = Depends(require_admin)):
     html = Path('app/templates/index.html').read_text(encoding='utf-8').replace('{{ app_name }}', settings.app_name)
+    html = html.replace(
+        'Supply Chain Tracker<small>Berlin / Brandenburg · v3</small>',
+        'JobTrack<small>Smart Job Search · v16.2</small>',
+    )
     scripts = (
         '<script src="/language-ui.js"></script>'
         '<script src="/source-ui.js"></script>'
@@ -36,6 +44,11 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
         '<script src="/ui-shell.js"></script>'
     )
     return HTMLResponse(html.replace('</body>', scripts + '</body>'))
+
+
+@app.get('/health')
+def health():
+    return {'status': 'ok', 'version': '16.2.0'}
 
 
 @app.get('/ui-shell.js')
