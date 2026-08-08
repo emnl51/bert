@@ -13,8 +13,14 @@ BASE_URL = 'https://www.stepstone.de'
 _JOB_PATH = '/stellenangebote--'
 _SKIP_LINES = {
     'gehalt anzeigen', 'schnelle bewerbung', 'anschreiben nicht erforderlich',
-    'mehr', 'neu', 'teilweise home-office', 'home-office',
+    'mehr', 'neu',
 }
+_EMPLOYMENT_RE = re.compile(
+    r'(?i)\b(werkstudent\w*|working student|studentische\w*|teilzeit|part[ -]?time|'
+    r'minijob|mini-job|geringf(?:ü|ue)gig\w*|vollzeit|full[ -]?time|'
+    r'\d{1,2}\s*(?:h|hours?|stunden)\s*(?:/|pro)\s*(?:week|woche))\b'
+)
+_POSTED_RE = re.compile(r'(?i)^(heute|gestern|vor\s+\d+\s+(?:stunde|stunden|tag|tagen|woche|wochen|monat|monaten))$')
 
 
 def _stable_id(*parts: str) -> str:
@@ -113,12 +119,23 @@ def parse_stepstone_search_html(html: str, source_name: str = 'StepStone Germany
         if not description:
             long_lines = [x for x in lines[2:] if len(x) >= 45]
             description = ' '.join(long_lines[:3])
-        if employment:
-            description = _clean(f'{description} Employment type: {employment}')
+
+        employment_signals = []
+        for line in lines:
+            if _EMPLOYMENT_RE.search(line) and line not in employment_signals:
+                employment_signals.append(line)
+        if employment and employment not in employment_signals:
+            employment_signals.insert(0, employment)
+        if employment_signals:
+            description = _clean(f"{description} StepStone employment: {'; '.join(employment_signals[:4])}")
+
+        if not created_at:
+            created_at = next((x for x in lines if _POSTED_RE.match(x)), '')
 
         external_match = re.search(r'--(\d+)(?:-|\b)', href)
         external_id = external_match.group(1) if external_match else _stable_id(title, company, url)
-        remote_text = f'{location} {description}'.lower()
+        container_text = _clean(container.get_text(' ', strip=True)).lower()
+        remote = 'home-office' in container_text or 'remote' in container_text
         jobs.append(Job(
             source=source_name,
             external_id=str(external_id),
@@ -128,7 +145,7 @@ def parse_stepstone_search_html(html: str, source_name: str = 'StepStone Germany
             url=url,
             description=description,
             created_at=created_at,
-            remote=('home-office' in remote_text or 'remote' in remote_text),
+            remote=remote,
         ))
     return jobs
 
