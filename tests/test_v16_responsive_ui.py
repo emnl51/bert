@@ -20,6 +20,13 @@ def test_v16_main_loads_shell_last():
     assert text.index('<script src="/log-ui.js"></script>') < text.index('<script src="/ui-shell.js"></script>')
 
 
+def test_v16_owns_current_public_health_route():
+    text = Path('app/v16_main.py').read_text(encoding='utf-8')
+    assert "getattr(r, 'path', None) in {'/', '/health'}" in text
+    assert "@app.get('/health')" in text
+    assert "'version': '16.2.0'" in text
+
+
 def test_docker_runs_v16():
     dockerfile = Path('Dockerfile').read_text(encoding='utf-8')
     assert 'app.v16_main:app' in dockerfile
