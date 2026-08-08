@@ -14,7 +14,7 @@
       .fit-high b{color:var(--good)}.fit-mid b{color:var(--warn)}.fit-low b{color:var(--bad)}.review-actions{display:flex;gap:6px;flex-wrap:wrap}.review-actions button{flex:1;min-width:90px}
       .btn.suitable{background:var(--goodbg);color:var(--good);border-color:#a8d9bc}.btn.unsuitable{background:var(--badbg);color:var(--bad);border-color:#efb2ab}.btn.maybe2{background:var(--warnbg);color:var(--warn);border-color:#e5c567}
       .job-meta{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}.why-list{font-size:12px;color:var(--muted);max-height:52px;overflow:hidden}.learning-rule{display:grid;grid-template-columns:90px 1fr 80px 90px auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
-      .rule-term{font-weight:700}.feedback-note{font-size:12px;color:var(--muted)}
+      .rule-term{font-weight:700}.feedback-note{font-size:12px;color:var(--muted)}.reject-box{display:grid;grid-template-columns:1fr;gap:7px;padding:10px;background:#fff8f7;border:1px solid #f4cbc7;border-radius:10px}.reject-box textarea{min-height:54px;border:1px solid var(--line);border-radius:8px;padding:8px;resize:vertical}.reject-box select{padding:8px}
       @media(max-width:700px){.job-grid{grid-template-columns:1fr}.learning-rule{grid-template-columns:1fr 1fr}.fit-row{grid-template-columns:repeat(3,1fr)}}`;
     document.head.appendChild(st);
   }
@@ -22,8 +22,6 @@
   function fitClass(n){return n>=75?'fit-high':n>=50?'fit-mid':'fit-low'}
   function installOverview(){
     const section=$('overview'); if(!section)return;
-    const metric=section.querySelector('.grid');
-    const warning=$('securityWarnings');
     const wrap=document.createElement('div');
     wrap.innerHTML=`<div class="section-title"><div><h2>Job Review Queue</h2><div class="hint">Review jobs, track applications and teach JobTrack what is not relevant.</div></div></div>
       <div class="review-toolbar">
@@ -55,24 +53,21 @@
   async function loadReviewJobs(){
     const q=new URLSearchParams({limit:'150',min_score:$('reviewMin')?.value||'35',min_language_score:'0',decision:$('reviewDecision')?.value||'active',language:$('reviewLanguage')?.value||'preferred'});
     const d=await api('/api/jobs?'+q); const grid=$('jobReviewGrid'); if(!grid)return;
-    grid.innerHTML=d.jobs.length?d.jobs.map(j=>`<article class="job-card">
+    grid.innerHTML=d.jobs.length?d.jobs.map((j,i)=>`<article class="job-card">
       <div class="job-head"><div><a class="job-title" href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a><div class="job-company">${esc(j.company)} · ${esc(j.location)}</div></div><span class="pill">${esc((j.language_label||'unclear').replaceAll('_',' '))}</span></div>
       <div class="fit-row"><div class="fit-box ${fitClass(j.overall_score||j.score)}"><b>${j.overall_score??j.score}</b><span>Overall fit</span></div><div class="fit-box ${fitClass(j.score)}"><b>${j.score}</b><span>Job fit</span></div><div class="fit-box ${fitClass(j.language_score||0)}"><b>${j.language_score??'—'}</b><span>Language fit</span></div></div>
-      <div class="job-meta"><span>${esc(j.source)}</span><span>Status: ${esc(j.decision||'unreviewed')}</span>${j.application_status?`<span>Application: ${esc(j.application_status)}</span>`:''}</div>
+      <div class="job-meta"><span>${esc(j.source)}</span><span>Review: ${esc(j.decision||'unreviewed')}</span><span>Application: ${esc(j.application_status||'not started')}</span></div>
       <div class="why-list">${(j.reasons||[]).slice(0,6).map(x=>`<span class="pill">${esc(x)}</span>`).join('')}</div>
-      <div class="review-actions"><button class="btn suitable" onclick='reviewJob(${JSON.stringify(j.job_key)},"suitable")'>Suitable</button><button class="btn maybe2" onclick='reviewJob(${JSON.stringify(j.job_key)},"maybe")'>Maybe</button><button class="btn unsuitable" onclick='notSuitable(${JSON.stringify(j.job_key)})'>Not suitable</button></div>
+      <div class="review-actions"><button class="btn suitable" onclick='reviewJob(${JSON.stringify(j.job_key)},"suitable")'>Suitable</button><button class="btn maybe2" onclick='reviewJob(${JSON.stringify(j.job_key)},"maybe")'>Maybe</button><button class="btn unsuitable" onclick="toggleReject(${i})">Not suitable</button></div>
+      <div class="reject-box" id="reject-${i}" hidden><select id="reject-reason-${i}">${reasonOptions.map(x=>`<option value="${x[0]}">${x[1]}</option>`).join('')}</select><textarea id="reject-note-${i}" placeholder="Optional note: what exactly made this irrelevant?"></textarea><label class="hint"><input id="reject-learn-${i}" type="checkbox" checked> Update search learning from this decision</label><button class="btn unsuitable" onclick='submitNotSuitable(${JSON.stringify(j.job_key)},${i})'>Save as not suitable</button></div>
     </article>`).join(''):'<div class="card muted">No jobs match the current filters.</div>';
   }
 
   window.reviewJob=async function(jobKey,suitability,reason='',note='',learn=true){
-    await api(`/api/jobs/${encodeURIComponent(jobKey)}/feedback`,{method:'POST',body:JSON.stringify({suitability,reason,note,learn})}); toast('Feedback saved'); await loadReviewJobs(); if(window.loadOverview)loadOverview();
+    await api(`/api/jobs/${encodeURIComponent(jobKey)}/feedback`,{method:'POST',body:JSON.stringify({suitability,reason,note,learn})}); toast(suitability==='suitable'?'Added to To Apply':'Feedback saved'); await loadReviewJobs(); if(window.loadOverview)loadOverview();
   }
-  window.notSuitable=async function(jobKey){
-    const reason=prompt('Why is this job not suitable?\n\n'+reasonOptions.map((x,i)=>`${i+1}. ${x[1]}`).join('\n'),'1'); if(reason===null)return;
-    const idx=Math.max(0,Math.min(reasonOptions.length-1,(parseInt(reason)||1)-1));
-    const note=prompt('Optional note (leave blank if none):',''); if(note===null)return;
-    await reviewJob(jobKey,'not_suitable',reasonOptions[idx][0],note,true);
-  }
+  window.toggleReject=function(i){const box=$(`reject-${i}`);box.hidden=!box.hidden;}
+  window.submitNotSuitable=async function(jobKey,i){const reason=$(`reject-reason-${i}`).value;const note=$(`reject-note-${i}`).value;const learn=$(`reject-learn-${i}`).checked;await reviewJob(jobKey,'not_suitable',reason,note,learn);}
 
   window.loadLearning=async function(){
     const d=await api('/api/learning'); $('lfTotal').textContent=d.stats.feedback_total;$('lfBad').textContent=d.stats.not_suitable;$('lfRules').textContent=d.stats.active_rules;
