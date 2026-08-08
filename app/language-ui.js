@@ -19,6 +19,7 @@
   `;
   document.head.appendChild(style);
 
+  const $ = id => document.getElementById(id);
   const langLabel = value => labelMap[value] || value;
   window.langLabel = langLabel;
 
@@ -76,12 +77,19 @@
   }
 
   window.loadJobs = async function loadJobsV4() {
-    const min = $('jobsMinScore').value || 0;
+    // review-ui replaces the legacy Latest matches table. When that happens,
+    // refreshAll must refresh the modern review grid instead of dereferencing removed controls.
+    const legacyBody = $('jobsBody');
+    if (!legacyBody) {
+      if (typeof window.loadReviewJobs === 'function') return window.loadReviewJobs();
+      return;
+    }
+    const min = $('jobsMinScore')?.value || 0;
     const minLang = $('jobsMinLanguage')?.value || 0;
-    const decision = $('jobsDecision').value || 'active';
+    const decision = $('jobsDecision')?.value || 'active';
     const language = $('jobsLanguage')?.value || 'preferred';
     const d = await api(`/api/jobs?limit=100&min_score=${encodeURIComponent(min)}&min_language_score=${encodeURIComponent(minLang)}&decision=${encodeURIComponent(decision)}&language=${encodeURIComponent(language)}`);
-    $('jobsBody').innerHTML = d.jobs.length ? d.jobs.map(j => `<tr>
+    legacyBody.innerHTML = d.jobs.length ? d.jobs.map(j => `<tr>
       <td class="score-stack"><b>${j.overall_score}</b><div class="hint">Job ${j.score} · Lang ${j.language_score}</div></td>
       <td><span class="lang ${esc(j.language_label)}">${esc(langLabel(j.language_label))}</span><div class="hint">${(j.language_reasons||[]).slice(0,2).map(esc).join(' · ')}</div></td>
       <td><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a></td><td>${esc(j.company)}</td><td>${esc(j.location)}</td>
@@ -92,8 +100,13 @@
     const status = $('appFilter')?.value || 'all';
     const d = await api(`/api/applications?status=${encodeURIComponent(status)}&limit=300`);
     appCache = d.applications;
-    $('aToApply').textContent=d.stats.to_apply;$('aApplied').textContent=d.stats.applied;$('aInterview').textContent=d.stats.interview;$('aOffer').textContent=d.stats.offer;
-    $('applicationsBody').innerHTML = appCache.length ? appCache.map(a => { const key=encodeURIComponent(a.job_key); return `<tr>
+    if ($('aToApply')) $('aToApply').textContent=d.stats.to_apply;
+    if ($('aApplied')) $('aApplied').textContent=d.stats.applied;
+    if ($('aInterview')) $('aInterview').textContent=d.stats.interview;
+    if ($('aOffer')) $('aOffer').textContent=d.stats.offer;
+    const body = $('applicationsBody');
+    if (!body) return;
+    body.innerHTML = appCache.length ? appCache.map(a => { const key=encodeURIComponent(a.job_key); return `<tr>
       <td><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a><div class="hint">${esc(a.location)}</div></td><td>${esc(a.company)}</td>
       <td class="score-stack"><b>${a.overall_score}</b><div class="hint">Job ${a.score} · Lang ${a.language_score}</div></td><td><span class="lang ${esc(a.language_label)}">${esc(langLabel(a.language_label))}</span></td>
       <td><select class="compact-select" onchange="changeAppStatus('${key}',this.value)"><option value="to_apply" ${a.status==='to_apply'?'selected':''}>To Apply</option><option value="applied" ${a.status==='applied'?'selected':''}>Applied</option><option value="interview" ${a.status==='interview'?'selected':''}>Interview</option><option value="rejected" ${a.status==='rejected'?'selected':''}>Rejected</option><option value="offer" ${a.status==='offer'?'selected':''}>Offer</option></select><div style="margin-top:5px"><span class="stage ${esc(a.status)}">${esc(stageLabel(a.status))}</span></div></td>
@@ -105,16 +118,18 @@
     ['target_location','location_terms','min_score','max_digest_jobs','timezone','schedule_frequency','schedule_day','schedule_hour','schedule_minute','schedule_interval_hours','primary_working_language','current_german_level','max_german_requirement','min_language_score','language_weight'].forEach(k=>{if($(k))$(k).value=s[k]??''});
     ['show_b2_stretch','hide_german_heavy','prefer_german_growth'].forEach(k=>{if($(k))$(k).checked=String(s[k]).toLowerCase()==='true'});
     ['telegram_chat_id','smtp_host','smtp_port','smtp_username','email_from','email_to'].forEach(k=>{if($(k))$(k).value=s[k]??''});
-    $('smtp_use_tls').checked=String(s.smtp_use_tls).toLowerCase()==='true';
-    $('telegramSecret').textContent=s.telegram_bot_token==='configured'?'Token configured. Enter a new value only to replace it.':'No token saved.';
-    $('smtpSecret').textContent=s.smtp_password==='configured'?'Password configured. Enter a new value only to replace it.':'No password saved.';
-    $('jobsMinScore').value=s.min_score||35;if($('jobsMinLanguage'))$('jobsMinLanguage').value=s.min_language_score||40;toggleScheduleFields();
+    if ($('smtp_use_tls')) $('smtp_use_tls').checked=String(s.smtp_use_tls).toLowerCase()==='true';
+    if ($('telegramSecret')) $('telegramSecret').textContent=s.telegram_bot_token==='configured'?'Token configured. Enter a new value only to replace it.':'No token saved.';
+    if ($('smtpSecret')) $('smtpSecret').textContent=s.smtp_password==='configured'?'Password configured. Enter a new value only to replace it.':'No password saved.';
+    if ($('jobsMinScore')) $('jobsMinScore').value=s.min_score||35;
+    if($('jobsMinLanguage'))$('jobsMinLanguage').value=s.min_language_score||40;
+    if (typeof toggleScheduleFields === 'function') toggleScheduleFields();
   };
 
   window.saveSettings = async function saveSettingsV4() {
     try {
       const body={target_location:$('target_location').value,location_terms:$('location_terms').value,min_score:+$('min_score').value,max_digest_jobs:+$('max_digest_jobs').value,timezone:$('timezone').value,schedule_frequency:$('schedule_frequency').value,schedule_day:$('schedule_day').value,schedule_hour:+$('schedule_hour').value,schedule_minute:+$('schedule_minute').value,schedule_interval_hours:+$('schedule_interval_hours').value,primary_working_language:$('primary_working_language').value,current_german_level:$('current_german_level').value,max_german_requirement:$('max_german_requirement').value,min_language_score:+$('min_language_score').value,language_weight:+$('language_weight').value,show_b2_stretch:$('show_b2_stretch').checked,hide_german_heavy:$('hide_german_heavy').checked,prefer_german_growth:$('prefer_german_growth').checked};
-      await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});$('settingsStatus').textContent='Saved';$('settingsStatus').className='status ok';$('jobsMinScore').value=body.min_score;$('jobsMinLanguage').value=body.min_language_score;toast('Search and language settings saved');await Promise.all([loadOverview(),loadJobs()]);
+      await api('/api/settings',{method:'PUT',body:JSON.stringify(body)});if($('settingsStatus')){$('settingsStatus').textContent='Saved';$('settingsStatus').className='status ok'};if($('jobsMinScore'))$('jobsMinScore').value=body.min_score;if($('jobsMinLanguage'))$('jobsMinLanguage').value=body.min_language_score;toast('Search and language settings saved');await Promise.all([loadOverview(),loadJobs()]);
     } catch(e) { toast(e.message,true); }
   };
 
