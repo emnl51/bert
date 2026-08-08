@@ -52,6 +52,15 @@ def test_candidate_cv_is_round_tripped_and_evidence_analysis_is_created(tmp_path
     assert stored['requirements']
 
 
+def test_engineer_title_alone_does_not_create_degree_requirement(tmp_path, monkeypatch):
+    setup(tmp_path,monkeypatch)
+    cid=save_candidate(_candidate())
+    job=Job(source='test',external_id='2',title='Process Engineer',company='Example',location='Berlin',url='https://example.com/2',description='Automotive manufacturing role with PFMEA and SPC responsibilities.')
+    db.upsert_job(job)
+    result=analyze_job(job.key,cid)
+    assert not any(r['category']=='education' and r['term']=='engineering degree' for r in result['requirements'])
+
+
 def test_unchanged_candidate_and_job_use_cached_analysis(tmp_path, monkeypatch):
     setup(tmp_path,monkeypatch)
     cid=save_candidate(_candidate()); job=_job(); db.upsert_job(job)
@@ -82,7 +91,7 @@ def test_ollama_is_only_thirty_percent_and_cannot_change_evidence(tmp_path, monk
                 'contextual_score':100,
                 'context_notes':[{'evidence_ref':'tools:sap','text':'SAP is a gap; ERP experience is adjacent but not proof of SAP.'}],
                 'transferable':[{'evidence_ref':'tools:sap','text':'ERP experience may help onboarding to SAP.'}],
-                'summary':'Strong manufacturing context, with SAP still unsupported by direct CV evidence.',
+                'summary':'This free-form field must not replace the deterministic summary.',
             })}
 
     class FakeClient:
@@ -99,6 +108,7 @@ def test_ollama_is_only_thirty_percent_and_cannot_change_evidence(tmp_path, monk
     assert result['engine']=='hybrid-v2+ollama:test-model'
     assert any(e['term']=='sap' and e['status']=='missing' for e in result['evidence'])
     assert result['ai_context']['context_notes'][0]['evidence_ref']=='tools:sap'
+    assert 'free-form' not in result['summary'].lower()
 
 
 def test_ai_context_rejects_unknown_evidence_references(tmp_path, monkeypatch):
@@ -109,7 +119,7 @@ def test_ai_context_rejects_unknown_evidence_references(tmp_path, monkeypatch):
 
     class FakeResponse:
         def raise_for_status(self): pass
-        def json(self): return {'response':json.dumps({'contextual_score':95,'context_notes':[{'evidence_ref':'invented:skill','text':'Invented skill'}],'transferable':[],'summary':'Test'})}
+        def json(self): return {'response':json.dumps({'contextual_score':95,'context_notes':[{'evidence_ref':'invented:skill','text':'Invented skill'}],'transferable':[]})}
     class FakeClient:
         def __init__(self,*args,**kwargs): pass
         def __enter__(self): return self
