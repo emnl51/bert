@@ -20,6 +20,7 @@ JobTrack combines stable job APIs and ATS feeds with an optional experimental mu
 - In-app log viewer with filtering and secret redaction
 - Database backup, scoped reset and factory reset tools
 - SQLite persistence in a Docker `/data` volume
+- Release images published to GitHub Container Registry (GHCR)
 
 ## Search model
 
@@ -189,7 +190,7 @@ The **Database** screen supports scoped cleanup for jobs/applications, run histo
 
 A SQLite snapshot is created before destructive reset operations. Backups are stored under `/data/backups` inside the persistent Docker volume. Factory Reset always creates a backup and then recreates default schemas/configuration.
 
-## Quick start
+## Quick start — build from source
 
 Requirements:
 
@@ -223,14 +224,67 @@ Open:
 http://SERVER_IP:8080
 ```
 
+## Run the prebuilt GHCR image
+
+Every published GitHub Release is tested and then published as a Docker image to:
+
+```text
+ghcr.io/emnl51/jobtrack
+```
+
+A release such as `v16.2.1` produces these tags:
+
+```text
+ghcr.io/emnl51/jobtrack:v16.2.1
+ghcr.io/emnl51/jobtrack:16.2.1
+ghcr.io/emnl51/jobtrack:latest
+```
+
+To run the prebuilt image without building locally:
+
+```bash
+git clone https://github.com/emnl51/jobtrack.git
+cd jobtrack
+cp .env.example .env
+```
+
+Set a strong `ADMIN_PASSWORD` and `APP_SECRET_KEY` in `.env`, then run:
+
+```bash
+JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml pull
+JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml up -d
+```
+
+To follow the latest published release instead:
+
+```bash
+docker compose -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.ghcr.yml up -d
+```
+
+The GHCR deployment uses the same persistent `tracker_data` Docker volume and the same `.env` configuration model as the source-build deployment.
+
+If the container package is not public after its first publication, the package owner must change its visibility to **Public** in GitHub Packages before anonymous `docker pull` commands will work. Public GHCR container packages can be pulled without authentication.
+
 ## Updating an existing installation
 
 Keep the existing deployment directory, `.env`, Docker `/data` volume and especially `APP_SECRET_KEY`.
+
+Source-build deployment:
 
 ```bash
 cd ~/jobtrack
 git pull origin main
 docker compose up -d --build
+```
+
+GHCR deployment pinned to a release:
+
+```bash
+cd ~/jobtrack
+git pull origin main
+JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml pull
+JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 Do **not** use `docker compose down -v` unless you intentionally want to delete persistent Docker volumes.
@@ -240,6 +294,13 @@ Verify the running application:
 ```bash
 docker compose ps
 docker compose exec tracker python -c "import app.v16_main; print(app.v16_main.app.version)"
+```
+
+For a GHCR deployment use the matching Compose file:
+
+```bash
+docker compose -f docker-compose.ghcr.yml ps
+docker compose -f docker-compose.ghcr.yml exec tracker python -c "import app.v16_main; print(app.v16_main.app.version)"
 ```
 
 Expected application version:
@@ -260,13 +321,15 @@ python -m pytest -q
 docker compose exec tracker python -m pytest -q
 ```
 
-GitHub Actions performs:
+GitHub Actions CI performs:
 
 ```text
 python -m compileall -q app tests
 node --check app/*.js
 python -m pytest -q
 ```
+
+The release container workflow repeats those checks before publishing. On a published GitHub Release it logs in to GHCR with the repository `GITHUB_TOKEN`, builds the image, pushes release and `latest` tags, and publishes build provenance metadata.
 
 ## Architecture note
 
