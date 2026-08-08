@@ -10,7 +10,7 @@ from .config import settings
 from .db import list_sources, save_source
 from .security import require_admin
 
-VERSION = '16.3.0'
+VERSION = '16.4.0'
 app = v15.app
 app.version = VERSION
 
@@ -126,7 +126,6 @@ def favicon_ico():
 @app.get('/apple-touch-icon.png', include_in_schema=False)
 @app.get('/apple-touch-icon-precomposed.png', include_in_schema=False)
 def apple_touch_icon():
-    # Avoid noisy browser-generated 404s without adding a binary asset to the image.
     return Response(status_code=204, headers={'Cache-Control': 'public, max-age=86400'})
 
 
@@ -142,4 +141,8 @@ def v16_health(_: str = Depends(require_admin)):
         'employment_format_filter': True,
         'legacy_jobs_refresh_fix': True,
         'stepstone_experimental_provider': True,
+        'hybrid_cv_intelligence': True,
+        'evidence_based_cv_match': True,
+        'ollama_context_weight': 30,
+        'intelligence_cache': True,
     }
