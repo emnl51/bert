@@ -1,5 +1,39 @@
 # Changelog
 
+## v16.4.0 — Hybrid CV Intelligence
+
+### Added
+
+- Evidence-based CV Match engine with structured requirement extraction
+- Seven scoring categories: role, experience, technical skills, tools/software, industry, education/certifications and responsibilities
+- Requirement-level `match`, `partial` and `missing` states with CV evidence excerpts
+- Hybrid scoring: 70% deterministic evidence + 30% optional Ollama context
+- Evidence-linked AI contextual notes and transferable-experience explanations
+- Analysis cache keyed by Candidate Profile, job content and AI settings
+- Manual **Re-analyze** action in the Intelligence UI
+- CV Match score breakdown and detailed evidence viewer
+- Configurable Ollama timeout
+- Linux Docker host-gateway mapping for `host.docker.internal`
+
+### AI safety / reliability
+
+- Ollama remains disabled by default
+- Job descriptions are explicitly treated as untrusted model data
+- AI cannot change deterministic requirement match/missing status
+- AI context must reference an existing deterministic evidence ID
+- Unknown/invented evidence references are discarded
+- Ollama failure or timeout falls back to evidence-only scoring
+- Scheduled Search Job intelligence runs in a worker thread so model calls do not block the scheduler event loop
+
+### Storage / migration
+
+Existing `job_intelligence` tables are migrated in place with additional JSON evidence, breakdown, cache and AI context fields. Existing Candidate CV encryption remains unchanged.
+
+### Versioning
+
+- Active application version: `16.4.0`
+- `/health` and `/api/v16-health` report the active version
+
 ## v16.3.0 — StepStone Experimental Source
 
 ### Added
