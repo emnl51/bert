@@ -129,15 +129,21 @@ def record_positive_event(job_key: str, event_type: str) -> dict[str, Any]:
 
 
 def sync_application_events() -> int:
-    """Import new Applied / Interview / Offer milestones once per job."""
+    """Import cumulative Applied / Interview / Offer milestones once per job."""
     ensure_positive_schema()
     with connection() as con:
         rows = con.execute("SELECT job_key,status FROM applications WHERE status IN ('applied','interview','offer')").fetchall()
+    milestones = {
+        'applied': ('applied',),
+        'interview': ('applied', 'interview'),
+        'offer': ('applied', 'interview', 'offer'),
+    }
     created = 0
     for row in rows:
-        result = record_positive_event(row['job_key'], row['status'])
-        if result['created']:
-            created += 1
+        for event_type in milestones[row['status']]:
+            result = record_positive_event(row['job_key'], event_type)
+            if result['created']:
+                created += 1
     return created
 
 
