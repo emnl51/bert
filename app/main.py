@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 import asyncio
 from typing import Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from starlette.requests import Request
@@ -17,6 +18,7 @@ from .db import (
     save_source, set_job_decision, set_setting,
 )
 from .notifier import test_email, test_telegram
+from .language_store import ensure_language_schema, enrich_applications, list_jobs_with_language
 from .providers import test_source
 from .runtime import runtime_config
 from .security import require_admin
@@ -54,6 +56,7 @@ def reschedule() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    ensure_language_schema()
     reschedule()
     scheduler.start()
     if settings.run_on_start:
@@ -62,13 +65,13 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title=settings.app_name, version='3.0.0', lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version='4.0.0', lifespan=lifespan)
 
 
 class AppSettingsPayload(BaseModel):
     target_location: str = 'Berlin'
     location_terms: str = 'berlin'
-    min_score: int = Field(35, ge=0, le=300)
+    min_score: int = Field(35, ge=0, le=100)
     max_digest_jobs: int = Field(20, ge=1, le=100)
     timezone: str = 'Europe/Berlin'
     schedule_frequency: str = 'weekly'
@@ -76,6 +79,14 @@ class AppSettingsPayload(BaseModel):
     schedule_hour: int = Field(8, ge=0, le=23)
     schedule_minute: int = Field(0, ge=0, le=59)
     schedule_interval_hours: int = Field(12, ge=1, le=168)
+    primary_working_language: str = 'English'
+    current_german_level: str = 'a2_b1'
+    max_german_requirement: str = 'b1'
+    min_language_score: int = Field(40, ge=0, le=100)
+    language_weight: int = Field(35, ge=0, le=100)
+    show_b2_stretch: bool = True
+    hide_german_heavy: bool = True
+    prefer_german_growth: bool = True
 
 
 class NotificationPayload(BaseModel):
@@ -123,7 +134,15 @@ def health():
 
 @app.get('/', response_class=HTMLResponse)
 def dashboard(request: Request, _: str = Depends(require_admin)):
-    return templates.TemplateResponse('index.html', {'request': request, 'app_name': settings.app_name})
+    html = Path('app/templates/index.html').read_text(encoding='utf-8')
+    html = html.replace('{{ app_name }}', settings.app_name)
+    html = html.replace('</body>', '<script src="/language-ui.js"></script></body>')
+    return HTMLResponse(html)
+
+
+@app.get('/language-ui.js')
+def language_ui(_: str = Depends(require_admin)):
+    return Response(Path('app/language-ui.js').read_text(encoding='utf-8'), media_type='application/javascript')
 
 
 @app.get('/api/overview')
@@ -150,8 +169,12 @@ def api_settings(_: str = Depends(require_admin)):
 def update_settings(payload: AppSettingsPayload, _: str = Depends(require_admin)):
     if payload.schedule_frequency not in ('disabled', 'interval', 'daily', 'weekly'):
         raise HTTPException(400, 'Invalid schedule frequency')
+    if payload.current_german_level not in ('a2', 'a2_b1', 'b1'):
+        raise HTTPException(400, 'Invalid current German level')
+    if payload.max_german_requirement not in ('a2', 'b1', 'b2'):
+        raise HTTPException(400, 'Invalid maximum German requirement')
     for key, value in payload.model_dump().items():
-        set_setting(key, str(value))
+        set_setting(key, str(value).lower() if isinstance(value, bool) else str(value))
     reschedule()
     return {'ok': True}
 
@@ -161,7 +184,6 @@ def update_notifications(payload: NotificationPayload, _: str = Depends(require_
     data = payload.model_dump()
     for key in ('telegram_chat_id', 'smtp_host', 'smtp_port', 'smtp_username', 'smtp_use_tls', 'email_from', 'email_to'):
         set_setting(key, str(data[key]).lower() if isinstance(data[key], bool) else str(data[key]))
-    # Empty secret input means preserve the current value.
     if payload.telegram_bot_token:
         set_setting('telegram_bot_token', payload.telegram_bot_token, is_secret=True)
     if payload.smtp_password:
@@ -262,13 +284,22 @@ async def run_now(_: str = Depends(require_admin)):
 @app.get('/api/jobs')
 def api_jobs(
     limit: int = Query(100, ge=1, le=500),
-    min_score: int = Query(0, ge=0, le=300),
+    min_score: int = Query(0, ge=0, le=100),
+    min_language_score: int = Query(0, ge=0, le=100),
     decision: str = Query('active'),
+    language: str = Query('preferred'),
     _: str = Depends(require_admin),
 ):
     if decision not in ('all', 'active', 'unreviewed', 'apply', 'maybe', 'skip'):
         raise HTTPException(400, 'Invalid decision filter')
-    return {'jobs': list_jobs(limit=limit, min_score=min_score, decision=None if decision == 'all' else decision)}
+    if language not in ('all', 'preferred', 'english_first', 'german_growth', 'stretch', 'german_heavy', 'unclear'):
+        raise HTTPException(400, 'Invalid language filter')
+    return {
+        'jobs': list_jobs_with_language(
+            limit=limit, min_score=min_score, min_language_score=min_language_score,
+            decision=None if decision == 'all' else decision, language=language,
+        )
+    }
 
 
 @app.put('/api/jobs/{job_key:path}/decision')
@@ -290,7 +321,7 @@ def api_applications(
     if status not in valid:
         raise HTTPException(400, 'Invalid application status filter')
     return {
-        'applications': list_applications(None if status == 'all' else status, limit=limit),
+        'applications': enrich_applications(list_applications(None if status == 'all' else status, limit=limit)),
         'stats': application_stats(),
     }
 
