@@ -97,7 +97,6 @@ def _upsert_rule(con, rule: dict[str, Any], reason: str) -> int:
     row = con.execute('SELECT id,evidence_count,weight FROM learned_rules WHERE scope=? AND term=?', (rule['scope'], rule['term'])).fetchone()
     if row:
         evidence = int(row['evidence_count']) + 1
-        # Strengthens slowly and is capped to prevent runaway learning.
         weight = max(-30, min(int(row['weight']), int(rule['weight'])) - (1 if evidence in (2, 4, 7) else 0))
         con.execute('UPDATE learned_rules SET evidence_count=?,weight=?,enabled=1,source_reason=?,updated_at=? WHERE id=?',
                     (evidence, weight, reason, now, row['id']))
@@ -121,9 +120,11 @@ def record_feedback(job_key: str, suitability: str, reason: str = '', note: str 
         now = _now()
         con.execute('INSERT INTO job_feedback(job_key,suitability,reason,note,generated_rules_json,created_at) VALUES(?,?,?,?,?,?)',
                     (job_key, suitability, reason, note or '', json.dumps(created_ids), now))
-        # Keep legacy decision aligned with the richer suitability model.
         legacy = {'suitable': 'apply', 'maybe': 'maybe', 'not_suitable': 'skip'}[suitability]
         con.execute('UPDATE jobs SET decision=?,decision_at=? WHERE job_key=?', (legacy, now, job_key))
+        if suitability == 'suitable':
+            con.execute('''INSERT INTO applications(job_key,status,created_at,updated_at) VALUES(?, 'to_apply', ?, ?)
+                           ON CONFLICT(job_key) DO UPDATE SET updated_at=excluded.updated_at''', (job_key, now, now))
     return {'job_key': job_key, 'suitability': suitability, 'reason': reason, 'learned_rule_ids': created_ids}
 
 
