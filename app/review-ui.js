@@ -47,7 +47,14 @@
       <div class="section-title"><h2>Learned rules</h2></div><div class="card" style="padding:0"><div id="learnedRules"></div></div>
       <div class="section-title"><h2>Recent feedback</h2></div><div class="table-wrap"><table><thead><tr><th>Job</th><th>Decision</th><th>Reason</th><th>When</th></tr></thead><tbody id="feedbackBody"></tbody></table></div>`;
     main.appendChild(s);
-    b.addEventListener('click',()=>setTimeout(loadLearning,0));
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));
+      s.classList.add('active'); b.classList.add('active');
+      const title=$('pageTitle'); if(title)title.textContent='Learning';
+      try{localStorage.setItem('jobtrack-active-tab','learning')}catch(e){}
+      loadLearning();
+    });
   }
 
   async function loadReviewJobs(){
