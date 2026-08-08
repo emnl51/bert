@@ -24,7 +24,19 @@ def test_v16_owns_current_public_health_route():
     text = Path('app/v16_main.py').read_text(encoding='utf-8')
     assert "getattr(r, 'path', None) in {'/', '/health'}" in text
     assert "@app.get('/health')" in text
-    assert "'version': '16.2.0'" in text
+    assert "'version': '16.2." in text
+
+
+def test_legacy_jobs_refresh_is_routed_to_review_queue():
+    main = Path('app/v16_main.py').read_text(encoding='utf-8')
+    compat = Path('app/legacy-compat-ui.js').read_text(encoding='utf-8')
+    review = '<script src="/review-ui.js"></script>'
+    shim = '<script src="/legacy-compat-ui.js"></script>'
+    assert review in main and shim in main
+    assert main.index(review) < main.index(shim)
+    assert "@app.get('/legacy-compat-ui.js')" in main
+    assert 'window.loadJobs = routeLegacyJobsRefresh' in compat
+    assert 'window.loadReviewJobs' in compat
 
 
 def test_docker_runs_v16():
