@@ -56,25 +56,27 @@ async def run_search_job(search_job_id: int) -> dict:
             job = deepcopy(source_job)
             job.score, job.reasons = score_job(job, profile['keywords'], location_terms)
             employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile)
+            if not employment_ok:
+                # Do not store or mark employment-mismatched jobs as seen. If a provider
+                # later returns richer metadata proving the role is part-time, the job can
+                # be reconsidered and notified normally.
+                continue
             job.reasons.extend(employment_reasons)
             job.language_score, job.language_label, job.language_reasons = assess_language_fit(job, language_profile)
             job.score, neg = apply_learned_penalty(job, job.score, profile_id=profile['id']); job.reasons.extend(neg)
             job.score, pos = apply_positive_boost(job, job.score, profile_id=profile['id']); job.reasons.extend(pos)
-            if not employment_ok:
-                job.score = 0
-                job.overall_score = 0
-            else:
-                job.overall_score = calculate_overall_score(job.score, job.language_score, profile['language_weight'])
+            job.overall_score = calculate_overall_score(job.score, job.language_score, profile['language_weight'])
             upsert_job(job); upsert_language_fit(job); upsert_profile_score(job, profile['id'])
-            fresh_for_this_search = mark_search_job_seen(search_job_id, job.key)
-            eligible = employment_ok and job.language_score >= min_lang and job.overall_score >= min_score
+            eligible = job.language_score >= min_lang and job.overall_score >= min_score
             if profile['hide_german_heavy'] and job.language_label == 'german_heavy': eligible=False
             if not profile['show_b2_stretch'] and job.language_label == 'stretch': eligible=False
             if eligible and candidate:
                 try: job.intelligence = analyze_job(job.key,candidate['id'],search_job_id)
                 except Exception as exc: job.reasons.append(f'intelligence-error: {exc}')
-            if fresh_for_this_search and eligible:
-                matches.append(job)
+            if eligible:
+                fresh_for_this_search = mark_search_job_seen(search_job_id, job.key)
+                if fresh_for_this_search:
+                    matches.append(job)
         matches.sort(key=lambda j:(getattr(j,'intelligence',{}).get('cv_match',-1),j.overall_score,j.language_score,j.score), reverse=True)
         matches=matches[:int(search_job.get('max_results') or 20)]
         notify_cfg=_notification_cfg(search_job,base_cfg)
