@@ -14,13 +14,13 @@ class FakeFrame:
                 'site': 'indeed', 'id': 'abc', 'title': 'Working Student Supply Chain',
                 'company': 'Example GmbH', 'location': 'Berlin',
                 'job_url': 'https://example.com/job/abc', 'description': 'English required. German is a plus.',
-                'date_posted': '2026-08-08', 'is_remote': False,
+                'job_type': 'parttime', 'date_posted': '2026-08-08', 'is_remote': False,
             },
             {
                 'site': 'linkedin', 'id': 'def', 'title': 'Werkstudent Procurement',
                 'company': 'Example AG', 'location': 'Berlin',
                 'job_url': 'https://example.com/job/def', 'description': 'International procurement team.',
-                'date_posted': '2026-08-07', 'is_remote': False,
+                'job_type': 'internship', 'date_posted': '2026-08-07', 'is_remote': False,
             },
         ]
         return iter(enumerate(rows))
@@ -45,6 +45,7 @@ def test_jobspy_maps_rows(monkeypatch):
     assert len(jobs) == 2
     assert jobs[0].title == 'Working Student Supply Chain'
     assert jobs[0].source == 'JobSpy Multi-board / indeed'
+    assert 'Employment type: parttime' in jobs[0].description
     assert jobs[1].source == 'JobSpy Multi-board / linkedin'
 
 
