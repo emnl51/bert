@@ -8,14 +8,13 @@ from .profile_store import get_profile, upsert_profile_score
 from .providers import fetch_all_jobs
 from .ranker import assess_language_fit, calculate_overall_score, score_job
 from .runtime import runtime_config
-from .search_job_store import create_search_job_run, finish_search_job_run, get_search_job
+from .search_job_store import create_search_job_run, finish_search_job_run, get_search_job, mark_search_job_seen
 
 
 def _notification_cfg(search_job: dict, base_cfg: dict) -> dict:
     cfg = dict(base_cfg)
     n = search_job.get('notification') or {}
     s = search_job.get('secrets') or {}
-    # Per-search-job values override global notification values. Blank values inherit global values.
     for key in ('telegram_chat_id','smtp_host','smtp_port','smtp_username','smtp_use_tls','email_from','email_to'):
         if n.get(key) not in (None,''): cfg[key] = n[key]
     for key in ('telegram_bot_token','smtp_password'):
@@ -23,7 +22,7 @@ def _notification_cfg(search_job: dict, base_cfg: dict) -> dict:
     return cfg
 
 
-def _selected_sources(search_job: dict, base_cfg: dict) -> list[dict]:
+def _selected_sources(search_job: dict) -> list[dict]:
     enabled = [s for s in list_sources(mask_secrets=False) if s['enabled']]
     ids = {int(x) for x in (search_job.get('source_ids') or [])}
     return [s for s in enabled if not ids or int(s['id']) in ids]
@@ -39,7 +38,7 @@ async def run_search_job(search_job_id: int) -> dict:
         profile = get_profile(int(search_job['profile_id']))
         if not profile: raise ValueError('Search profile not found')
         search_terms = list((profile.get('keywords') or {}).get('search',{}).keys())
-        sources = _selected_sources(search_job, base_cfg)
+        sources = _selected_sources(search_job)
         fetched, provider_errors = await fetch_all_jobs(sources, search_terms, search_job['target_location'])
         matches=[]
         language_profile={
@@ -56,11 +55,12 @@ async def run_search_job(search_job_id: int) -> dict:
             job.score, neg = apply_learned_penalty(job, job.score, profile_id=profile['id']); job.reasons.extend(neg)
             job.score, pos = apply_positive_boost(job, job.score, profile_id=profile['id']); job.reasons.extend(pos)
             job.overall_score = calculate_overall_score(job.score, job.language_score, profile['language_weight'])
-            is_new = upsert_job(job); upsert_language_fit(job); upsert_profile_score(job, profile['id'])
+            upsert_job(job); upsert_language_fit(job); upsert_profile_score(job, profile['id'])
+            fresh_for_this_search = mark_search_job_seen(search_job_id, job.key)
             eligible = job.language_score >= min_lang
             if profile['hide_german_heavy'] and job.language_label == 'german_heavy': eligible=False
             if not profile['show_b2_stretch'] and job.language_label == 'stretch': eligible=False
-            if is_new and job.overall_score >= min_score and eligible: matches.append(job)
+            if fresh_for_this_search and job.overall_score >= min_score and eligible: matches.append(job)
         matches.sort(key=lambda j:(j.overall_score,j.language_score,j.score), reverse=True)
         matches=matches[:int(search_job.get('max_results') or 20)]
         notify_cfg=_notification_cfg(search_job,base_cfg)
