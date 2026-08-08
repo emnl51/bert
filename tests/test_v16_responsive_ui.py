@@ -14,8 +14,8 @@ def test_v16_shell_has_mobile_navigation_and_table_cards():
 
 def test_v16_main_loads_shell_last():
     text = Path('app/v16_main.py').read_text(encoding='utf-8')
-    # Patch releases (16.1, 16.2, ...) should not break a responsive-shell test.
-    assert "app.version = '16." in text
+    assert "VERSION = '16.3.0'" in text
+    assert 'app.version = VERSION' in text
     assert '<script src="/ui-shell.js"></script>' in text
     assert text.index('<script src="/log-ui.js"></script>') < text.index('<script src="/ui-shell.js"></script>')
 
@@ -24,7 +24,17 @@ def test_v16_owns_current_public_health_route():
     text = Path('app/v16_main.py').read_text(encoding='utf-8')
     assert "getattr(r, 'path', None) in {'/', '/health'}" in text
     assert "@app.get('/health')" in text
-    assert "'version': '16.2." in text
+    assert "'version': app.version" in text
+
+
+def test_stepstone_ui_is_loaded_after_source_ui():
+    text = Path('app/v16_main.py').read_text(encoding='utf-8')
+    source_ui = '<script src="/source-ui.js"></script>'
+    stepstone_ui = '<script src="/stepstone-ui.js"></script>'
+    assert source_ui in text and stepstone_ui in text
+    assert text.index(source_ui) < text.index(stepstone_ui)
+    assert "@app.get('/stepstone-ui.js')" in text
+    assert 'stepstone_experimental_provider' in text
 
 
 def test_legacy_jobs_refresh_is_routed_to_review_queue():
