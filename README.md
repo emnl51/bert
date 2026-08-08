@@ -2,7 +2,7 @@
 
 Self-hosted job discovery, filtering, ranking, scheduled search, application tracking and job-search intelligence for Berlin/Brandenburg and configurable target locations.
 
-JobTrack combines stable job APIs and ATS feeds with an optional experimental multi-board scraper, profile-specific ranking, language fit, employment-format filtering, learning, notifications and a responsive admin UI.
+JobTrack combines stable job APIs and ATS feeds with optional experimental job-board providers, profile-specific ranking, language fit, employment-format filtering, learning, notifications and a responsive admin UI.
 
 ## Highlights
 
@@ -73,7 +73,7 @@ Per-job secrets inherit global values when blank and are encrypted with `APP_SEC
 - SmartRecruiters company postings
 - custom RSS / Atom feeds
 
-### Experimental multi-board source
+### Experimental sources
 
 **JobSpy** can retrieve jobs from:
 
@@ -82,7 +82,22 @@ Per-job secrets inherit global values when blank and are encrypted with `APP_SEC
 - Google Jobs
 - Glassdoor
 
-JobSpy is intentionally isolated from the stable provider layer and disabled until configured. Scraping can be affected by rate limits, anti-bot changes or upstream HTML changes. Per-query and total provider timeouts prevent one scraper call from blocking the full search run.
+**StepStone Germany** is available as a separate experimental direct provider. It reads normal public StepStone search-result pages and extracts job cards into JobTrack. It is intentionally conservative:
+
+- disabled until explicitly configured
+- default maximum 3 search terms per run
+- default 1 result page per search term
+- default maximum 25 jobs per search term
+- configurable 10–90 second request timeout
+- configurable delay between StepStone requests
+- no CAPTCHA, proxy or anti-bot bypass
+- HTTP 403/429 is reported as a provider error instead of retried aggressively
+- page-layout changes fail safely instead of inserting malformed jobs
+- StepStone employment signals such as `Werkstudent`, `Teilzeit`, `Minijob`, `Vollzeit` and hours-per-week text are preserved for JobTrack's strict employment filter
+
+A separate **StepStone Germany — Manual search** source remains available as a fallback when the experimental provider is blocked or the StepStone page structure changes.
+
+Experimental providers can be affected by rate limits, anti-bot controls or upstream HTML changes. Stable API/ATS sources should remain the preferred base of an automated search setup.
 
 ### Search-only fallbacks
 
@@ -224,6 +239,24 @@ Open:
 http://SERVER_IP:8080
 ```
 
+## Configure StepStone
+
+Open **Sources → Source Catalog → StepStone Germany — Experimental → Configure**.
+
+Recommended initial configuration:
+
+```text
+Maximum search terms: 3
+Pages per search term: 1
+Maximum results per term: 25
+Request timeout: 30 seconds
+Delay between requests: 1 second
+```
+
+Save it disabled first if you want to run **Test** before enabling it. Once enabled, StepStone can be selected by individual Search Jobs like any other automatic source.
+
+For the built-in Werkstudent / Part-time profile, the first provider queries already target student/part-time/minijob roles. StepStone results still pass through the same strict employment-format gate before being stored.
+
 ## Run the prebuilt GHCR image
 
 Every published GitHub Release is tested and then published as a Docker image to:
@@ -232,13 +265,7 @@ Every published GitHub Release is tested and then published as a Docker image to
 ghcr.io/emnl51/jobtrack
 ```
 
-A release such as `v16.2.1` produces these tags:
-
-```text
-ghcr.io/emnl51/jobtrack:v16.2.1
-ghcr.io/emnl51/jobtrack:16.2.1
-ghcr.io/emnl51/jobtrack:latest
-```
+A release tag produces a matching image tag plus `latest`.
 
 To run the prebuilt image without building locally:
 
@@ -248,11 +275,11 @@ cd jobtrack
 cp .env.example .env
 ```
 
-Set a strong `ADMIN_PASSWORD` and `APP_SECRET_KEY` in `.env`, then run:
+Set a strong `ADMIN_PASSWORD` and `APP_SECRET_KEY` in `.env`, then run with the release tag you want:
 
 ```bash
-JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml pull
-JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml up -d
+JOBTRACK_IMAGE_TAG=v16.3.0 docker compose -f docker-compose.ghcr.yml pull
+JOBTRACK_IMAGE_TAG=v16.3.0 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 To follow the latest published release instead:
@@ -264,7 +291,7 @@ docker compose -f docker-compose.ghcr.yml up -d
 
 The GHCR deployment uses the same persistent `tracker_data` Docker volume and the same `.env` configuration model as the source-build deployment.
 
-If the container package is not public after its first publication, the package owner must change its visibility to **Public** in GitHub Packages before anonymous `docker pull` commands will work. Public GHCR container packages can be pulled without authentication.
+If the container package is not public after its first publication, the package owner must change its visibility to **Public** in GitHub Packages before anonymous `docker pull` commands will work.
 
 ## Updating an existing installation
 
@@ -278,15 +305,6 @@ git pull origin main
 docker compose up -d --build
 ```
 
-GHCR deployment pinned to a release:
-
-```bash
-cd ~/jobtrack
-git pull origin main
-JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml pull
-JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml up -d
-```
-
 Do **not** use `docker compose down -v` unless you intentionally want to delete persistent Docker volumes.
 
 Verify the running application:
@@ -296,17 +314,10 @@ docker compose ps
 docker compose exec tracker python -c "import app.v16_main; print(app.v16_main.app.version)"
 ```
 
-For a GHCR deployment use the matching Compose file:
-
-```bash
-docker compose -f docker-compose.ghcr.yml ps
-docker compose -f docker-compose.ghcr.yml exec tracker python -c "import app.v16_main; print(app.v16_main.app.version)"
-```
-
-Expected application version:
+Expected current main version:
 
 ```text
-16.2.1
+16.3.0
 ```
 
 ## Development and CI
@@ -349,7 +360,7 @@ Historical `UPGRADE_V*_TO_V*.md` documents have been removed; this README is the
 - SQLite databases and local backup artifacts are ignored by Git.
 - Keep `APP_SECRET_KEY` stable; changing it can make encrypted credentials and Candidate CV data unreadable.
 - Rotate a provider credential if it has ever appeared in logs or terminal output.
-- JobSpy is experimental; use conservative result limits and timeouts.
+- JobSpy and StepStone are experimental; use conservative result limits and timeouts.
 - Do not expose the admin panel directly to the public internet without HTTPS and appropriate network controls.
 - Prefer a reverse proxy or private-access solution such as Caddy/Nginx and/or Tailscale/WireGuard.
 
