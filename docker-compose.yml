@@ -1,7 +1,7 @@
 services:
   tracker:
     build: .
-    container_name: berlin-supply-chain-tracker
+    container_name: jobtrack
     restart: unless-stopped
     env_file:
       - .env
