@@ -14,7 +14,7 @@ def test_v16_shell_has_mobile_navigation_and_table_cards():
 
 def test_v16_main_loads_shell_last():
     text = Path('app/v16_main.py').read_text(encoding='utf-8')
-    assert "VERSION = '16.3.0'" in text
+    assert "VERSION = '16.4.0'" in text
     assert 'app.version = VERSION' in text
     assert '<script src="/ui-shell.js"></script>' in text
     assert text.index('<script src="/log-ui.js"></script>') < text.index('<script src="/ui-shell.js"></script>')
@@ -25,6 +25,9 @@ def test_v16_owns_current_public_health_route():
     assert "getattr(r, 'path', None) in {'/', '/health'}" in text
     assert "@app.get('/health')" in text
     assert "'version': app.version" in text
+    assert 'hybrid_cv_intelligence' in text
+    assert 'evidence_based_cv_match' in text
+    assert 'intelligence_cache' in text
 
 
 def test_stepstone_ui_is_loaded_after_source_ui():
