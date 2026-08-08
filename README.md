@@ -1,28 +1,41 @@
-# JobTrack v7
+# JobTrack v8
 
-Self-hosted job discovery and application tracker for Berlin/Brandenburg roles, with language-aware ranking, application tracking, extensible sources and feedback-driven search learning.
+Self-hosted job discovery and application tracker for Berlin/Brandenburg roles, with language-aware ranking, application tracking, extensible sources and bidirectional feedback learning.
 
-## v7 highlights: Job Review Queue + Search Learning
+## v8 highlights: Positive preference learning
 
-The Overview page now acts as a **Job Review Queue**.
+JobTrack now learns not only from **Not suitable** decisions, but also from successful user actions and application outcomes.
 
-Each vacancy shows:
+Positive signals:
 
-- Overall Fit
-- Job Fit
-- Language Fit
-- language category
-- source
-- current review state
-- current application stage
+- **Suitable** → light positive signal
+- **Applied** → stronger positive signal
+- **Interview** → strong positive signal
+- **Offer** → strongest positive signal
 
-Review actions:
+Repeated updates of the same job/status are idempotent and do not inflate the model. Application milestones are cumulative: an `Offer` confirms `Applied + Interview + Offer` once each.
 
-- **Suitable** — marks the vacancy as suitable and automatically adds it to Application Tracker as `To Apply`.
-- **Maybe** — keeps it for later review.
-- **Not suitable** — stores a structured rejection reason and can update search learning.
+Positive rules can learn affinity for:
 
-### Not-suitable reasons
+- role/title patterns
+- Supply Chain / Procurement / Operations skill terms
+- English-first or German-growth environments
+- specific companies, but only from stronger Interview / Offer outcomes
+
+Boosts are capped so learned preferences cannot overwhelm the explicit Job Fit model.
+
+## Bidirectional Search Learning
+
+The Learning page now displays two rule types:
+
+- **BOOST** — learned from Suitable / Applied / Interview / Offer
+- **PENALTY** — learned from Not suitable feedback
+
+Both types show scope, term, weight, evidence count and strongest signal. Every learned rule can be disabled or deleted.
+
+### Negative learning
+
+Structured Not-suitable reasons include:
 
 - wrong role / function
 - German requirement too high
@@ -32,33 +45,48 @@ Review actions:
 - not interested in company
 - other
 
-The user can disable learning for an individual rejection before saving it.
+Negative rules start small, strengthen gradually with repeated evidence and are capped.
 
-## Search Learning
+### Positive learning
 
-JobTrack does not silently rewrite all search keywords after a single rejection. Instead it stores feedback events and creates small, reversible learned penalties.
+Positive event weights start approximately at:
 
-Examples:
+- Suitable: +4
+- Applied: +5
+- Interview: +9
+- Offer: +14
 
-- rejecting a software-development role as `wrong_role` can create a title penalty
-- rejecting a company can create a company-specific penalty
-- rejecting a location can create a location-specific penalty
-- rejecting a German-heavy role can reinforce the language penalty
+Repeated evidence strengthens matching slowly. The total learned positive boost applied to one vacancy is capped at +30 Job Fit points.
 
-Learned rules:
+## Job Review Queue
 
-- start with a small negative weight
-- strengthen gradually when the same signal receives repeated feedback
-- are capped to prevent runaway learning
-- can be disabled or deleted from the **Learning** page
-- are applied to future rescans before the final Overall Fit is calculated
+Each vacancy shows:
 
-Two new SQLite tables are created automatically:
+- Overall Fit
+- Job Fit
+- Language Fit
+- language category
+- source
+- current review state
+- application stage
+- learned boost/penalty reasons when matched
+
+Review actions:
+
+- **Suitable** — adds the vacancy to Application Tracker as `To Apply` and records a positive preference signal.
+- **Maybe** — keeps it for later review without learning.
+- **Not suitable** — records a structured reason and optionally updates negative learning.
+
+## Learning database
+
+Feedback/learning tables are created automatically:
 
 - `job_feedback`
 - `learned_rules`
+- `positive_events`
+- `positive_rules`
 
-Existing jobs, applications, language scores and source configuration remain intact.
+Existing jobs, applications, language scores, sources and settings remain intact.
 
 ## Target Company Monitor
 
@@ -129,7 +157,7 @@ Application Tracker stages:
 
 `To Apply → Applied → Interview → Rejected / Offer`
 
-Application dates and notes are editable. Review decisions and application history survive later rescans.
+At each search run, new Applied / Interview / Offer milestones are synchronized into positive learning exactly once.
 
 ## Quick start
 
@@ -147,7 +175,7 @@ http://SERVER_IP:8080
 
 ## Upgrade
 
-For v6 → v7, see `UPGRADE_V6_TO_V7.md`. Keep the existing `/data` Docker volume. The feedback schema is created automatically on startup.
+For v7 → v8, see `UPGRADE_V7_TO_V8.md`. Keep the existing `/data` Docker volume. Positive-learning tables are created automatically.
 
 ## Security
 
