@@ -96,9 +96,9 @@ TERM_GROUPS = {
         'supply chain': ('supply chain', 'logistics', 'procurement'),
     },
     'education': {
-        'engineering degree': ('engineering degree', 'engineer', 'engineering', 'ingenieur', 'bachelor of engineering', 'master of engineering'),
-        'bachelor': ('bachelor', 'b.sc', 'beng', 'b.eng'),
-        'master': ('master', 'm.sc', 'meng', 'm.eng', 'mba'),
+        'engineering degree': ('engineering degree', 'degree in engineering', 'engineering degree required', 'bachelor of engineering', 'master of engineering'),
+        'bachelor': ('bachelor degree', 'bachelor\'s degree', 'b.sc', 'beng', 'b.eng'),
+        'master': ('master degree', 'master\'s degree', 'm.sc', 'meng', 'm.eng', 'mba'),
         'iatf 16949': ('iatf 16949',),
         'vda': ('vda 6.3', 'vda qmc', 'pscr'),
     },
@@ -260,7 +260,6 @@ def _term_evidence(requirement: dict, candidate_text: str) -> dict:
             'requirement_id': requirement['id'], 'category': category, 'term': term, 'status': 'match',
             'evidence': _excerpt(candidate_text, hit), 'confidence': 1.0,
         }
-
     candidate_tokens = _tokens(candidate_text)
     alias_tokens = set().union(*(_tokens(x) for x in aliases)) if aliases else set()
     overlap = len(candidate_tokens & alias_tokens) / max(1, len(alias_tokens))
@@ -303,7 +302,6 @@ def _category_score(evidence: list[dict], category: str) -> int:
 def _deterministic(candidate: dict, job: dict) -> dict[str, Any]:
     job_text = f"{job.get('title','')}\n{job.get('description','')}"
     candidate_text = _candidate_text(candidate)
-
     role_req, role_ev = _role_requirement(candidate, job)
     requirements = [role_req, *_extract_term_requirements(job_text)]
     evidence = [role_ev]
@@ -311,15 +309,12 @@ def _deterministic(candidate: dict, job: dict) -> dict[str, Any]:
     exp_req, exp_ev = _experience_evidence(job_text, candidate_text)
     requirements.extend(exp_req)
     evidence.extend(exp_ev)
-
     breakdown = {category: _category_score(evidence, category) for category in CATEGORY_WEIGHTS}
     weighted = sum(breakdown[k] * weight for k, weight in CATEGORY_WEIGHTS.items()) / 100
     score = round(weighted)
-
     matched = [e['term'] for e in evidence if e['status'] == 'match']
     partial = [e['term'] for e in evidence if e['status'] == 'partial']
     missing = [e['term'] for e in evidence if e['status'] == 'missing']
-
     strengths = [f"Evidence match: {term}" for term in matched[:8]]
     strengths.extend(f"Partial/transferable: {term}" for term in partial[:3])
     gaps = [f"No CV evidence: {term}" for term in missing[:8]]
@@ -329,30 +324,13 @@ def _deterministic(candidate: dict, job: dict) -> dict[str, Any]:
         risks.append('German requirement may exceed the candidate profile')
     if any(x in normalized_job for x in ('full-time','full time','vollzeit')) and any('werkstudent' in _norm(x) or 'working student' in _norm(x) for x in candidate.get('target_roles', [])):
         risks.append('Employment format may not match the current target')
-
-    transferable = [
-        {'requirement': e['term'], 'evidence': e['evidence']}
-        for e in evidence if e['status'] == 'partial'
-    ][:6]
+    transferable = [{'requirement': e['term'], 'evidence': e['evidence']} for e in evidence if e['status'] == 'partial'][:6]
     rec = 'apply' if score >= 78 else 'maybe' if score >= 58 else 'skip'
     summary = f"{score}/100 evidence-based CV match. {len(matched)} matched, {len(partial)} partial, {len(missing)} unsupported requirements."
     return {
-        'cv_match': score,
-        'deterministic_score': score,
-        'recommendation': rec,
-        'strengths': strengths,
-        'gaps': gaps,
-        'risks': risks,
-        'matched_terms': matched,
-        'missing_terms': missing,
-        'requirements': requirements,
-        'evidence': evidence,
-        'breakdown': breakdown,
-        'transferable': transferable,
-        'ai_context': {},
-        'ai_score': None,
-        'summary': summary,
-        'engine': 'evidence-v2',
+        'cv_match': score, 'deterministic_score': score, 'recommendation': rec, 'strengths': strengths, 'gaps': gaps,
+        'risks': risks, 'matched_terms': matched, 'missing_terms': missing, 'requirements': requirements, 'evidence': evidence,
+        'breakdown': breakdown, 'transferable': transferable, 'ai_context': {}, 'ai_score': None, 'summary': summary, 'engine': 'evidence-v2',
     }
 
 
@@ -374,11 +352,7 @@ def _safe_ai_context(data: dict, baseline: dict) -> dict:
         text = str(item.get('text') or '').strip()[:500]
         if ref in evidence_ids and text:
             transferable.append({'evidence_ref': ref, 'text': text})
-    return {
-        'context_notes': notes,
-        'transferable': transferable,
-        'summary': str(data.get('summary') or '').strip()[:1000],
-    }
+    return {'context_notes': notes, 'transferable': transferable}
 
 
 def _ollama(candidate: dict, job: dict, baseline: dict) -> dict | None:
@@ -387,11 +361,7 @@ def _ollama(candidate: dict, job: dict, baseline: dict) -> dict | None:
     url = get_setting('intelligence_ollama_url', 'http://host.docker.internal:11434').rstrip('/')
     model = get_setting('intelligence_ollama_model', 'gemma3').strip() or 'gemma3'
     timeout = max(10, min(int(get_setting('intelligence_ollama_timeout_seconds', '60') or 60), 120))
-
-    compact_evidence = [
-        {'id': e['requirement_id'], 'term': e['term'], 'status': e['status'], 'evidence': e['evidence'][:350]}
-        for e in baseline['evidence']
-    ]
+    compact_evidence = [{'id': e['requirement_id'], 'term': e['term'], 'status': e['status'], 'evidence': e['evidence'][:350]} for e in baseline['evidence']]
     prompt = f'''You are a CV-to-job contextual assessor. Return JSON only.
 
 SECURITY RULES:
@@ -405,8 +375,7 @@ Return this exact shape:
 {{
   "contextual_score": 0-100,
   "context_notes": [{{"evidence_ref":"category:term","text":"short explanation"}}],
-  "transferable": [{{"evidence_ref":"category:term","text":"short explanation"}}],
-  "summary": "short evidence-grounded summary"
+  "transferable": [{{"evidence_ref":"category:term","text":"short explanation"}}]
 }}
 
 CANDIDATE_DATA:
@@ -424,16 +393,9 @@ DESCRIPTION: {job.get('description','')[:16000]}
 '''
     try:
         with httpx.Client(timeout=timeout) as client:
-            response = client.post(url + '/api/generate', json={
-                'model': model,
-                'prompt': prompt,
-                'stream': False,
-                'format': 'json',
-                'options': {'temperature': 0.05},
-            })
+            response = client.post(url + '/api/generate', json={'model': model, 'prompt': prompt, 'stream': False, 'format': 'json', 'options': {'temperature': 0.05}})
             response.raise_for_status()
-            payload = response.json()
-            data = json.loads(payload.get('response', '{}'))
+            data = json.loads(response.json().get('response', '{}'))
         score = max(0, min(100, int(data.get('contextual_score', baseline['deterministic_score']))))
         return {'score': score, 'context': _safe_ai_context(data, baseline), 'model': model}
     except Exception:
@@ -442,18 +404,10 @@ DESCRIPTION: {job.get('description','')[:16000]}
 
 def _cache_key(candidate: dict, job: dict) -> str:
     payload = {
-        'candidate': {
-            'headline': candidate.get('headline', ''), 'cv_text': candidate.get('cv_text', ''),
-            'skills': candidate.get('skills', []), 'languages': candidate.get('languages', {}),
-            'target_roles': candidate.get('target_roles', []), 'notes': candidate.get('notes', ''),
-        },
+        'candidate': {'headline': candidate.get('headline', ''), 'cv_text': candidate.get('cv_text', ''), 'skills': candidate.get('skills', []), 'languages': candidate.get('languages', {}), 'target_roles': candidate.get('target_roles', []), 'notes': candidate.get('notes', '')},
         'job': {'title': job.get('title', ''), 'description': job.get('description', ''), 'company': job.get('company', '')},
         'engine': 'hybrid-v2',
-        'ollama': {
-            'enabled': get_setting('intelligence_ollama_enabled', 'false'),
-            'url': get_setting('intelligence_ollama_url', ''),
-            'model': get_setting('intelligence_ollama_model', 'gemma3'),
-        },
+        'ollama': {'enabled': get_setting('intelligence_ollama_enabled', 'false'), 'url': get_setting('intelligence_ollama_url', ''), 'model': get_setting('intelligence_ollama_model', 'gemma3')},
     }
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()
 
@@ -473,14 +427,12 @@ def analyze_job(job_key: str, candidate_profile_id: int, search_job_id: int | No
     job = _job(job_key)
     if not candidate or not job:
         raise ValueError('Candidate profile or job not found')
-
     cache_key = _cache_key(candidate, job)
     if not force:
         cached = get_analysis(job_key, candidate_profile_id)
         if cached and cached.get('cache_key') == cache_key:
             cached['cached'] = True
             return cached
-
     baseline = _deterministic(candidate, job)
     ai = _ollama(candidate, job, baseline)
     result = dict(baseline)
@@ -493,34 +445,14 @@ def analyze_job(job_key: str, candidate_profile_id: int, search_job_id: int | No
         extra_transferable = ai['context'].get('transferable') or []
         if extra_transferable:
             result['transferable'] = [*result['transferable'], *extra_transferable][:8]
-        if ai['context'].get('summary'):
-            result['summary'] = f"{result['cv_match']}/100 hybrid CV match. {ai['context']['summary']}"
+        result['summary'] = f"{result['cv_match']}/100 hybrid CV match. Evidence score {baseline['deterministic_score']}/100; AI context score {ai_score}/100. Evidence status remains deterministic."
     result['recommendation'] = 'apply' if result['cv_match'] >= 78 else 'maybe' if result['cv_match'] >= 58 else 'skip'
-
     with connection() as con:
         con.execute('''
-        INSERT INTO job_intelligence(
-            job_key,candidate_profile_id,search_job_id,cv_match,recommendation,strengths_json,gaps_json,risks_json,
-            matched_terms_json,missing_terms_json,summary,engine,analyzed_at,requirements_json,evidence_json,breakdown_json,
-            transferable_json,ai_context_json,cache_key,deterministic_score,ai_score
-        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(job_key,candidate_profile_id) DO UPDATE SET
-            search_job_id=excluded.search_job_id,cv_match=excluded.cv_match,recommendation=excluded.recommendation,
-            strengths_json=excluded.strengths_json,gaps_json=excluded.gaps_json,risks_json=excluded.risks_json,
-            matched_terms_json=excluded.matched_terms_json,missing_terms_json=excluded.missing_terms_json,
-            summary=excluded.summary,engine=excluded.engine,analyzed_at=excluded.analyzed_at,
-            requirements_json=excluded.requirements_json,evidence_json=excluded.evidence_json,breakdown_json=excluded.breakdown_json,
-            transferable_json=excluded.transferable_json,ai_context_json=excluded.ai_context_json,cache_key=excluded.cache_key,
-            deterministic_score=excluded.deterministic_score,ai_score=excluded.ai_score
-        ''', (
-            job_key,candidate_profile_id,search_job_id,result['cv_match'],result['recommendation'],
-            json.dumps(result['strengths'],ensure_ascii=False),json.dumps(result['gaps'],ensure_ascii=False),
-            json.dumps(result['risks'],ensure_ascii=False),json.dumps(result['matched_terms'],ensure_ascii=False),
-            json.dumps(result['missing_terms'],ensure_ascii=False),result['summary'],result['engine'],_now(),
-            json.dumps(result['requirements'],ensure_ascii=False),json.dumps(result['evidence'],ensure_ascii=False),
-            json.dumps(result['breakdown'],ensure_ascii=False),json.dumps(result['transferable'],ensure_ascii=False),
-            json.dumps(result['ai_context'],ensure_ascii=False),cache_key,result['deterministic_score'],result['ai_score'],
-        ))
+        INSERT INTO job_intelligence(job_key,candidate_profile_id,search_job_id,cv_match,recommendation,strengths_json,gaps_json,risks_json,matched_terms_json,missing_terms_json,summary,engine,analyzed_at,requirements_json,evidence_json,breakdown_json,transferable_json,ai_context_json,cache_key,deterministic_score,ai_score)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(job_key,candidate_profile_id) DO UPDATE SET search_job_id=excluded.search_job_id,cv_match=excluded.cv_match,recommendation=excluded.recommendation,strengths_json=excluded.strengths_json,gaps_json=excluded.gaps_json,risks_json=excluded.risks_json,matched_terms_json=excluded.matched_terms_json,missing_terms_json=excluded.missing_terms_json,summary=excluded.summary,engine=excluded.engine,analyzed_at=excluded.analyzed_at,requirements_json=excluded.requirements_json,evidence_json=excluded.evidence_json,breakdown_json=excluded.breakdown_json,transferable_json=excluded.transferable_json,ai_context_json=excluded.ai_context_json,cache_key=excluded.cache_key,deterministic_score=excluded.deterministic_score,ai_score=excluded.ai_score
+        ''', (job_key,candidate_profile_id,search_job_id,result['cv_match'],result['recommendation'],json.dumps(result['strengths'],ensure_ascii=False),json.dumps(result['gaps'],ensure_ascii=False),json.dumps(result['risks'],ensure_ascii=False),json.dumps(result['matched_terms'],ensure_ascii=False),json.dumps(result['missing_terms'],ensure_ascii=False),result['summary'],result['engine'],_now(),json.dumps(result['requirements'],ensure_ascii=False),json.dumps(result['evidence'],ensure_ascii=False),json.dumps(result['breakdown'],ensure_ascii=False),json.dumps(result['transferable'],ensure_ascii=False),json.dumps(result['ai_context'],ensure_ascii=False),cache_key,result['deterministic_score'],result['ai_score']))
     return {'job_key': job_key, 'candidate_profile_id': candidate_profile_id, 'cache_key': cache_key, 'cached': False, **result}
 
 
