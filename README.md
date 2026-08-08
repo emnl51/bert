@@ -1,20 +1,53 @@
-# JobTrack v5
+# JobTrack v6
 
-Self-hosted job discovery and application tracker. The default profile is tuned for Berlin/Brandenburg Werkstudent and part-time roles in Supply Chain, Procurement, Planning, Order Management, Operations and Logistics.
+Self-hosted job discovery and application tracker for Berlin/Brandenburg roles, with language-aware ranking, application tracking and extensible job-source management.
 
-## v5 highlights: Source Catalog
+## v6 highlights: Target Company Monitor + improved UI
 
-JobTrack now separates job sources into two modes.
+The Sources page now includes a **Target Company Monitor**. Paste a company careers/jobs URL and JobTrack detects common ATS platforms.
+
+### Automatically monitored ATS
+
+- Greenhouse — board token detected from the jobs URL
+- Lever — company/site slug detected from the jobs URL
+- SmartRecruiters — company identifier detected from the jobs URL
+
+These sources use their public postings interfaces and can run automatically with the scheduler.
+
+### Safely recognised as manual careers shortcuts
+
+- Workday
+- Teamtailor
+- Recruitee
+- SAP SuccessFactors
+- Personio
+- Workable
+- JOIN
+- Unknown/company-owned career pages
+
+JobTrack does **not** scrape these sites. If a supported public feed is not available in JobTrack, the careers URL is stored as a safe manual shortcut instead.
+
+The web UI was also refreshed with:
+
+- clearer JobTrack branding and navigation
+- persistent last-opened tab
+- modern source cards and AUTO / FEED / MANUAL badges
+- a dedicated target-company URL workflow
+- modal-based source configuration instead of browser prompts
+- improved responsive layout for desktop/tablet/mobile
+- clearer configured-source state and credential indicators
+
+## Source Catalog
 
 ### Automatic API / feed sources
 
 - Arbeitnow
 - Adzuna
-- Jooble REST API (API key required)
-- Greenhouse Job Board API (company board token)
-- Lever public postings feed (company/site slug)
-- SmartRecruiters company postings (company identifier)
-- Custom RSS / Atom feeds
+- Jooble REST API
+- Greenhouse Job Board
+- Lever postings
+- SmartRecruiters company postings
+- Custom RSS / Atom
 
 ### Search-only shortcuts
 
@@ -26,33 +59,40 @@ JobTrack now separates job sources into two modes.
 - Talent.com
 - Bundesagentur für Arbeit Jobsuche
 
-Search-only sources are never scraped. JobTrack stores a search URL template and opens the targeted query in a new browser tab. This avoids pretending that a public job-listing API exists where one is not available or approved.
-
-Use **Sources → Source Catalog** to add or configure providers without editing Python code.
+Search-only providers are never scraped. JobTrack opens a targeted search using the configured query and location.
 
 ## Language-aware matching
 
-JobTrack scores role fit and language fit separately so English-first jobs are prioritised without losing useful German-growth opportunities.
+JobTrack ranks each vacancy using three values:
 
-- **Job Fit (0-100):** role, work format, skills and location.
-- **Language Fit (0-100):** English/German requirements detected in the job description.
-- **Overall Fit (0-100):** weighted combination of Job Fit and Language Fit.
-- **English-first:** English working environment with no mandatory German signal.
-- **German-growth:** German is optional or A2/B1-compatible.
-- **B2 stretch:** useful roles above the current A2→B1 profile.
-- **German-heavy:** C1/fluent/native German signals; hidden from recommended results by default.
+- **Job Fit (0–100):** role, work format, skills and location
+- **Language Fit (0–100):** detected English/German requirement
+- **Overall Fit (0–100):** weighted Job Fit + Language Fit
 
-## Existing features
+Language categories:
 
-- Apply / Maybe / Skip decisions.
-- Application Tracker: To Apply → Applied → Interview → Rejected / Offer.
-- Editable application dates and notes.
-- Admin web UI with HTTP Basic authentication.
-- Search location, score thresholds and schedule editable without restarting Docker.
-- Telegram and SMTP notifications.
-- API tokens/passwords encrypted in SQLite using `APP_SECRET_KEY`.
-- SQLite deduplication and run/error history.
-- Automatic migration from earlier JobTrack databases.
+- **English-first**
+- **German-growth**
+- **B2 stretch**
+- **German-heavy**
+- **Language unclear**
+
+Default profile is tuned for English-first work while German progresses from A2 toward B1.
+
+## Application workflow
+
+- Apply / Maybe / Skip decisions
+- Application Tracker: To Apply → Applied → Interview → Rejected / Offer
+- editable application dates and notes
+- decisions survive later rescans of the same job
+
+## Operations
+
+- configurable search schedule without restarting Docker
+- Telegram and SMTP notifications
+- encrypted API tokens/passwords in SQLite using `APP_SECRET_KEY`
+- SQLite deduplication and run/error history
+- automatic migration from earlier JobTrack databases
 
 ## Quick start
 
@@ -62,16 +102,20 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 docker compose up -d --build
 ```
 
-Open `http://SERVER_IP:8080`.
+Open:
+
+```text
+http://SERVER_IP:8080
+```
 
 ## Upgrade
 
-For v4 → v5, see `UPGRADE_V4_TO_V5.md`. No database migration is required; existing jobs, applications and language scores are preserved.
+For v5 → v6, see `UPGRADE_V5_TO_V6.md`. No database migration is required.
 
 ## Security
 
 - Do not expose port 8080 directly to the public internet without HTTPS.
-- Use Caddy/Nginx or private access through Tailscale/WireGuard.
+- Prefer Caddy/Nginx or private access through Tailscale/WireGuard.
 - Keep `APP_SECRET_KEY` stable.
 - Secret fields are write-only in the UI.
 - `.env` and SQLite database files are excluded by `.gitignore`.
