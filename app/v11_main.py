@@ -15,6 +15,7 @@ from .intelligence import analyze_job, ensure_intelligence_schema, get_analysis,
 from .search_job_store import get_search_job
 from .security import require_admin
 from .config import settings
+from .db import get_setting, set_setting
 
 app=v10.app
 _original_lifespan=app.router.lifespan_context
@@ -27,7 +28,6 @@ async def v11_lifespan(application):
 app.router.lifespan_context=v11_lifespan
 app.version='11.0.0'
 
-# Replace the legacy dashboard route so all extension UIs are guaranteed to load.
 app.router.routes[:] = [r for r in app.router.routes if not (getattr(r,'path',None)=='/' and 'GET' in (getattr(r,'methods',set()) or set()))]
 
 @app.get('/',response_class=HTMLResponse)
@@ -48,6 +48,11 @@ class CandidatePayload(BaseModel):
 class CandidateAssignmentPayload(BaseModel):
     candidate_profile_id:int|None=None
     enabled:bool=True
+
+class IntelligenceSettingsPayload(BaseModel):
+    ollama_enabled:bool=False
+    ollama_url:str='http://host.docker.internal:11434'
+    ollama_model:str='gemma3'
 
 @app.get('/intelligence-ui.js')
 def intelligence_ui(_:str=Depends(require_admin)):
@@ -82,6 +87,14 @@ def map_candidate(search_job_id:int,payload:CandidateAssignmentPayload,_:str=Dep
 @app.get('/api/search-jobs/{search_job_id}/candidate')
 def get_search_job_candidate(search_job_id:int,_:str=Depends(require_admin)):
     return {'candidate':candidate_for_search_job(search_job_id)}
+
+@app.get('/api/intelligence/settings')
+def intelligence_settings(_:str=Depends(require_admin)):
+    return {'ollama_enabled':get_setting('intelligence_ollama_enabled','false').lower() in ('1','true','yes','on'),'ollama_url':get_setting('intelligence_ollama_url','http://host.docker.internal:11434'),'ollama_model':get_setting('intelligence_ollama_model','gemma3')}
+
+@app.put('/api/intelligence/settings')
+def update_intelligence_settings(payload:IntelligenceSettingsPayload,_:str=Depends(require_admin)):
+    set_setting('intelligence_ollama_enabled',str(payload.ollama_enabled).lower()); set_setting('intelligence_ollama_url',payload.ollama_url.strip()); set_setting('intelligence_ollama_model',payload.ollama_model.strip()); return {'ok':True}
 
 @app.post('/api/intelligence/analyze')
 def analyze(payload:dict[str,Any],_:str=Depends(require_admin)):
