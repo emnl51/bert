@@ -49,6 +49,13 @@ async def run_search() -> dict:
         profile_match_counts = {p['id']: 0 for p in profiles}
 
         for raw_job in fetched:
+            # Do not persist obvious full-time or employment-unclear contamination in a
+            # strict part-time default run. This keeps both the review queue and the raw
+            # Stored jobs metric clean after a reset/re-index.
+            default_employment_ok, _default_employment_label, _default_employment_reasons = assess_employment_fit(raw_job, default_profile)
+            if not default_employment_ok:
+                continue
+
             is_new = None
             default_scored = None
             for profile in profiles:
@@ -74,9 +81,6 @@ async def run_search() -> dict:
                 if positive_reasons:
                     job.reasons.extend(positive_reasons)
 
-                # Employment format is a hard gate. Learned boosts or language score must
-                # never rescue an explicit full-time/unknown-format job for a strict
-                # Werkstudent/Part-time profile.
                 if not employment_ok:
                     job.score = 0
                     job.overall_score = 0
@@ -87,9 +91,9 @@ async def run_search() -> dict:
                     is_new = upsert_job(job)
                     upsert_language_fit(job)
                     default_scored = job
-                    if employment_ok and job.score >= int(profile.get('min_score', 35)):
+                    if job.score >= int(profile.get('min_score', 35)):
                         source_stats[job.source]['job_fit'] += 1
-                    if employment_ok and job.language_score >= int(profile.get('min_language_score', 40)):
+                    if job.language_score >= int(profile.get('min_language_score', 40)):
                         source_stats[job.source]['language_fit'] += 1
                 elif is_new is None:
                     is_new = upsert_job(job)
