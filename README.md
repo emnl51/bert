@@ -1,4 +1,4 @@
-# Berlin Supply Chain Tracker v3
+# Job Tracker v3
 
 Self-hosted job search and application tracker for Berlin/Brandenburg Werkstudent and part-time roles in Supply Chain, Procurement, Planning, Order Management, Operations and Logistics.
 
