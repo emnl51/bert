@@ -15,11 +15,7 @@ from .security import require_admin
 app = v11.app
 app.version = '12.0.0'
 
-# Replace only the dashboard route so the optional JobSpy UI can be loaded last.
-app.router.routes[:] = [
-    r for r in app.router.routes
-    if not (getattr(r, 'path', None) == '/' and 'GET' in (getattr(r, 'methods', set()) or set()))
-]
+app.router.routes[:] = [r for r in app.router.routes if not (getattr(r, 'path', None) == '/' and 'GET' in (getattr(r, 'methods', set()) or set()))]
 
 
 @app.get('/', response_class=HTMLResponse)
@@ -50,6 +46,7 @@ class JobSpyPayload(BaseModel):
     results_per_term: int = Field(default=20, ge=1, le=100)
     hours_old: int = Field(default=168, ge=1, le=720)
     max_search_terms: int = Field(default=6, ge=1, le=20)
+    timeout_seconds: int = Field(default=60, ge=10, le=180)
     linkedin_fetch_description: bool = False
 
 
@@ -69,16 +66,10 @@ def configure_jobspy(payload: JobSpyPayload, _: str = Depends(require_admin)):
         'results_per_term': payload.results_per_term,
         'hours_old': payload.hours_old,
         'max_search_terms': payload.max_search_terms,
+        'timeout_seconds': payload.timeout_seconds,
         'linkedin_fetch_description': payload.linkedin_fetch_description,
     }
-    source_id = save_source(
-        payload.name,
-        'jobspy',
-        payload.enabled,
-        config,
-        {},
-        source_id=current['id'] if current else None,
-    )
+    source_id = save_source(payload.name, 'jobspy', payload.enabled, config, {}, source_id=current['id'] if current else None)
     return {'ok': True, 'id': source_id, 'enabled': payload.enabled, 'config': config}
 
 
