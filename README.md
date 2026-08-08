@@ -1,20 +1,76 @@
-# JobTrack v6
+# JobTrack v7
 
-Self-hosted job discovery and application tracker for Berlin/Brandenburg roles, with language-aware ranking, application tracking and extensible job-source management.
+Self-hosted job discovery and application tracker for Berlin/Brandenburg roles, with language-aware ranking, application tracking, extensible sources and feedback-driven search learning.
 
-## v6 highlights: Target Company Monitor + improved UI
+## v7 highlights: Job Review Queue + Search Learning
 
-The Sources page now includes a **Target Company Monitor**. Paste a company careers/jobs URL and JobTrack detects common ATS platforms.
+The Overview page now acts as a **Job Review Queue**.
 
-### Automatically monitored ATS
+Each vacancy shows:
 
-- Greenhouse — board token detected from the jobs URL
-- Lever — company/site slug detected from the jobs URL
-- SmartRecruiters — company identifier detected from the jobs URL
+- Overall Fit
+- Job Fit
+- Language Fit
+- language category
+- source
+- current review state
+- current application stage
 
-These sources use their public postings interfaces and can run automatically with the scheduler.
+Review actions:
 
-### Safely recognised as manual careers shortcuts
+- **Suitable** — marks the vacancy as suitable and automatically adds it to Application Tracker as `To Apply`.
+- **Maybe** — keeps it for later review.
+- **Not suitable** — stores a structured rejection reason and can update search learning.
+
+### Not-suitable reasons
+
+- wrong role / function
+- German requirement too high
+- wrong seniority
+- wrong employment type
+- wrong location
+- not interested in company
+- other
+
+The user can disable learning for an individual rejection before saving it.
+
+## Search Learning
+
+JobTrack does not silently rewrite all search keywords after a single rejection. Instead it stores feedback events and creates small, reversible learned penalties.
+
+Examples:
+
+- rejecting a software-development role as `wrong_role` can create a title penalty
+- rejecting a company can create a company-specific penalty
+- rejecting a location can create a location-specific penalty
+- rejecting a German-heavy role can reinforce the language penalty
+
+Learned rules:
+
+- start with a small negative weight
+- strengthen gradually when the same signal receives repeated feedback
+- are capped to prevent runaway learning
+- can be disabled or deleted from the **Learning** page
+- are applied to future rescans before the final Overall Fit is calculated
+
+Two new SQLite tables are created automatically:
+
+- `job_feedback`
+- `learned_rules`
+
+Existing jobs, applications, language scores and source configuration remain intact.
+
+## Target Company Monitor
+
+Paste a company careers/jobs URL and JobTrack detects supported ATS platforms.
+
+Automatically monitored ATS:
+
+- Greenhouse
+- Lever
+- SmartRecruiters
+
+Safely recognised as manual shortcuts:
 
 - Workday
 - Teamtailor
@@ -23,23 +79,13 @@ These sources use their public postings interfaces and can run automatically wit
 - Personio
 - Workable
 - JOIN
-- Unknown/company-owned career pages
+- unknown/company-owned career pages
 
-JobTrack does **not** scrape these sites. If a supported public feed is not available in JobTrack, the careers URL is stored as a safe manual shortcut instead.
-
-The web UI was also refreshed with:
-
-- clearer JobTrack branding and navigation
-- persistent last-opened tab
-- modern source cards and AUTO / FEED / MANUAL badges
-- a dedicated target-company URL workflow
-- modal-based source configuration instead of browser prompts
-- improved responsive layout for desktop/tablet/mobile
-- clearer configured-source state and credential indicators
+JobTrack does not bypass site access controls or scrape unsupported platforms.
 
 ## Source Catalog
 
-### Automatic API / feed sources
+Automatic API/feed sources:
 
 - Arbeitnow
 - Adzuna
@@ -49,7 +95,7 @@ The web UI was also refreshed with:
 - SmartRecruiters company postings
 - Custom RSS / Atom
 
-### Search-only shortcuts
+Search-only shortcuts:
 
 - LinkedIn Jobs
 - Indeed Germany
@@ -59,40 +105,31 @@ The web UI was also refreshed with:
 - Talent.com
 - Bundesagentur für Arbeit Jobsuche
 
-Search-only providers are never scraped. JobTrack opens a targeted search using the configured query and location.
-
 ## Language-aware matching
 
-JobTrack ranks each vacancy using three values:
+JobTrack ranks each vacancy using:
 
-- **Job Fit (0–100):** role, work format, skills and location
-- **Language Fit (0–100):** detected English/German requirement
-- **Overall Fit (0–100):** weighted Job Fit + Language Fit
+- **Job Fit (0–100)**
+- **Language Fit (0–100)**
+- **Overall Fit (0–100)**
 
 Language categories:
 
-- **English-first**
-- **German-growth**
-- **B2 stretch**
-- **German-heavy**
-- **Language unclear**
+- English-first
+- German-growth
+- B2 stretch
+- German-heavy
+- Language unclear
 
 Default profile is tuned for English-first work while German progresses from A2 toward B1.
 
 ## Application workflow
 
-- Apply / Maybe / Skip decisions
-- Application Tracker: To Apply → Applied → Interview → Rejected / Offer
-- editable application dates and notes
-- decisions survive later rescans of the same job
+Application Tracker stages:
 
-## Operations
+`To Apply → Applied → Interview → Rejected / Offer`
 
-- configurable search schedule without restarting Docker
-- Telegram and SMTP notifications
-- encrypted API tokens/passwords in SQLite using `APP_SECRET_KEY`
-- SQLite deduplication and run/error history
-- automatic migration from earlier JobTrack databases
+Application dates and notes are editable. Review decisions and application history survive later rescans.
 
 ## Quick start
 
@@ -110,7 +147,7 @@ http://SERVER_IP:8080
 
 ## Upgrade
 
-For v5 → v6, see `UPGRADE_V5_TO_V6.md`. No database migration is required.
+For v6 → v7, see `UPGRADE_V6_TO_V7.md`. Keep the existing `/data` Docker volume. The feedback schema is created automatically on startup.
 
 ## Security
 
