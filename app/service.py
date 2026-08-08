@@ -1,4 +1,5 @@
 from .db import create_run, finish_run, mark_notified, upsert_job
+from .feedback_store import apply_learned_penalty
 from .notifier import send_email, send_telegram
 from .language_store import upsert_language_fit
 from .providers import fetch_all_jobs
@@ -24,6 +25,9 @@ async def run_search() -> dict:
         for job in fetched:
             job.score, job.reasons = score_job(job, cfg['keywords'], cfg['location_terms'])
             job.language_score, job.language_label, job.language_reasons = assess_language_fit(job, language_profile)
+            job.score, learned_reasons = apply_learned_penalty(job, job.score)
+            if learned_reasons:
+                job.reasons.extend(learned_reasons)
             job.overall_score = calculate_overall_score(job.score, job.language_score, cfg['language_weight'])
             is_new = upsert_job(job)
             upsert_language_fit(job)
