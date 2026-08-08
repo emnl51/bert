@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 from .db import connection
+from .secrets import encrypt_secret, decrypt_secret
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS candidate_profiles (
@@ -30,8 +31,13 @@ def _now(): return datetime.now(timezone.utc).isoformat()
 def ensure_candidate_schema():
     with connection() as con: con.executescript(SCHEMA)
 
+def _decrypt_cv(value:str)->str:
+    if not value: return ''
+    try: return decrypt_secret(value)
+    except Exception: return value
+
 def _decode(row):
-    d=dict(row); d['skills']=json.loads(d.pop('skills_json') or '[]'); d['languages']=json.loads(d.pop('languages_json') or '{}'); d['target_roles']=json.loads(d.pop('target_roles_json') or '[]'); return d
+    d=dict(row); d['cv_text']=_decrypt_cv(d.get('cv_text','')); d['skills']=json.loads(d.pop('skills_json') or '[]'); d['languages']=json.loads(d.pop('languages_json') or '{}'); d['target_roles']=json.loads(d.pop('target_roles_json') or '[]'); return d
 
 def list_candidates():
     ensure_candidate_schema()
@@ -44,7 +50,7 @@ def get_candidate(candidate_id:int):
     return _decode(row) if row else None
 
 def save_candidate(data:dict[str,Any], candidate_id:int|None=None):
-    ensure_candidate_schema(); now=_now(); vals={'name':data.get('name','Candidate').strip(),'headline':data.get('headline','').strip(),'cv_text':data.get('cv_text',''),'skills_json':json.dumps(data.get('skills',[]),ensure_ascii=False),'languages_json':json.dumps(data.get('languages',{}),ensure_ascii=False),'target_roles_json':json.dumps(data.get('target_roles',[]),ensure_ascii=False),'notes':data.get('notes',''),'updated_at':now}
+    ensure_candidate_schema(); now=_now(); vals={'name':data.get('name','Candidate').strip(),'headline':data.get('headline','').strip(),'cv_text':encrypt_secret(data.get('cv_text','')) if data.get('cv_text','') else '','skills_json':json.dumps(data.get('skills',[]),ensure_ascii=False),'languages_json':json.dumps(data.get('languages',{}),ensure_ascii=False),'target_roles_json':json.dumps(data.get('target_roles',[]),ensure_ascii=False),'notes':data.get('notes',''),'updated_at':now}
     with connection() as con:
         if candidate_id:
             con.execute('UPDATE candidate_profiles SET name=:name,headline=:headline,cv_text=:cv_text,skills_json=:skills_json,languages_json=:languages_json,target_roles_json=:target_roles_json,notes=:notes,updated_at=:updated_at WHERE id=:id',{**vals,'id':candidate_id}); return candidate_id
