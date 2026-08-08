@@ -71,15 +71,14 @@ def _now() -> str:
 def ensure_search_job_schema() -> None:
     from .profile_store import ensure_profile_schema, get_profile
     ensure_profile_schema()
+    p = get_profile()
     with connection() as con:
         con.executescript(SEARCH_JOB_SCHEMA)
-        if con.execute('SELECT COUNT(*) FROM search_jobs').fetchone()[0] == 0:
-            p = get_profile()
-            if p:
-                now = _now()
-                con.execute('''INSERT INTO search_jobs(name,enabled,profile_id,target_location,location_terms_json,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,max_results,created_at,updated_at)
-                               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                            ('Werkstudent Berlin Weekly',1,p['id'],p['target_location'],json.dumps(p['location_terms']),json.dumps([]),'weekly','mon',8,0,12,20,now,now))
+        if con.execute('SELECT COUNT(*) FROM search_jobs').fetchone()[0] == 0 and p:
+            now = _now()
+            con.execute('''INSERT INTO search_jobs(name,enabled,profile_id,target_location,location_terms_json,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,max_results,created_at,updated_at)
+                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                        ('Werkstudent Berlin Weekly',1,p['id'],p['target_location'],json.dumps(p['location_terms']),json.dumps([]),'weekly','mon',8,0,12,20,now,now))
 
 
 def _decode(row, mask_secrets: bool) -> dict[str, Any]:
