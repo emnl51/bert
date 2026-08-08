@@ -76,9 +76,24 @@ async def fetch_jobspy(source: dict, search_terms: list[str], target_location: s
                 failures.append(f'{site}: {type(exc).__name__}'); log.warning('JobSpy %s failed for query %r: %s', site, term, type(exc).__name__); continue
             if frame is None or getattr(frame,'empty',False): continue
             for _,row in frame.iterrows():
-                row_site=_text(row.get('site')).lower() or site; title=_text(row.get('title')); company=_text(row.get('company')); location=_text(row.get('location')) or target_location; url=_text(row.get('job_url_direct')) or _text(row.get('job_url')); description=_text(row.get('description')); created=_date_text(row.get('date_posted')); external_id=_text(row.get('id')) or _stable_id(row_site,title,company,url); dedupe=f'{row_site}:{external_id}'
+                row_site=_text(row.get('site')).lower() or site
+                title=_text(row.get('title'))
+                company=_text(row.get('company'))
+                location=_text(row.get('location')) or target_location
+                url=_text(row.get('job_url_direct')) or _text(row.get('job_url'))
+                description=_text(row.get('description'))
+                # JobSpy exposes employment/job type on supported boards. Preserve it in
+                # the scoring text so the employment-format gate can distinguish
+                # FULL_TIME from PART_TIME even when the description is short.
+                job_type=_text(row.get('job_type')) or _text(row.get('employment_type'))
+                if job_type:
+                    description=f'Employment type: {job_type}\n{description}'
+                created=_date_text(row.get('date_posted'))
+                external_id=_text(row.get('id')) or _stable_id(row_site,title,company,url)
+                dedupe=f'{row_site}:{external_id}'
                 if dedupe in seen: continue
-                seen.add(dedupe); jobs.append(Job(source=f"{source['name']} / {row_site}",external_id=external_id,title=title,company=company,location=location,url=url,description=description,created_at=created,remote=bool(row.get('is_remote',False))))
+                seen.add(dedupe)
+                jobs.append(Job(source=f"{source['name']} / {row_site}",external_id=external_id,title=title,company=company,location=location,url=url,description=description,created_at=created,remote=bool(row.get('is_remote',False))))
         if loop.time() - started >= total_timeout_seconds: break
     if failures and not jobs: raise RuntimeError('JobSpy returned no jobs; '+', '.join(dict.fromkeys(failures)))
     return jobs
