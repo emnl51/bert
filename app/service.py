@@ -2,11 +2,12 @@ from collections import defaultdict
 from copy import deepcopy
 
 from .db import create_run, finish_run, mark_notified, upsert_job
+from .employment_filter import assess_employment_fit, search_terms_for_profile
 from .feedback_store import apply_learned_penalty
 from .positive_learning import apply_positive_boost, sync_application_events
 from .notifier import send_email, send_telegram
 from .language_store import upsert_language_fit
-from .profile_store import ensure_profile_schema, list_profiles, profile_search_terms, upsert_profile_score
+from .profile_store import ensure_profile_schema, list_profiles, upsert_profile_score
 from .providers import fetch_all_jobs
 from .ranker import assess_language_fit, calculate_overall_score, score_job
 from .runtime import runtime_config
@@ -30,8 +31,12 @@ async def run_search() -> dict:
             raise RuntimeError('No enabled search profile')
         sync_application_events([p['id'] for p in profiles])
 
-        search_terms = profile_search_terms() or list(cfg['keywords'].get('search', {}).keys())
-        target_location = profiles[0].get('target_location') or cfg['target_location']
+        # The legacy/global run belongs to the default profile only. Mixing search terms
+        # from every enabled profile caused Werkstudent runs to send full-time manager
+        # queries to providers. Dedicated Search Jobs remain profile-specific.
+        default_profile = next((p for p in profiles if p.get('is_default')), profiles[0])
+        search_terms = search_terms_for_profile(default_profile) or list(cfg['keywords'].get('search', {}).keys())
+        target_location = default_profile.get('target_location') or cfg['target_location']
         fetched, provider_errors = await fetch_all_jobs(cfg['sources'], search_terms, target_location)
 
         for raw_job in fetched:
@@ -40,7 +45,6 @@ async def run_search() -> dict:
                 source_seen[raw_job.source].add(raw_job.key)
                 source_stats[raw_job.source]['unique_jobs'] += 1
 
-        default_profile = next((p for p in profiles if p.get('is_default')), profiles[0])
         fresh_matches = []
         profile_match_counts = {p['id']: 0 for p in profiles}
 
@@ -52,6 +56,9 @@ async def run_search() -> dict:
                 keywords = profile.get('keywords') or cfg['keywords']
                 location_terms = profile.get('location_terms') or cfg['location_terms']
                 job.score, job.reasons = score_job(job, keywords, location_terms)
+                employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile)
+                job.reasons.extend(employment_reasons)
+
                 language_profile = {
                     'primary_working_language': 'English',
                     'current_german_level': profile.get('current_german_level', 'a2_b1'),
@@ -67,15 +74,22 @@ async def run_search() -> dict:
                 if positive_reasons:
                     job.reasons.extend(positive_reasons)
 
-                job.overall_score = calculate_overall_score(job.score, job.language_score, profile.get('language_weight', 35))
+                # Employment format is a hard gate. Learned boosts or language score must
+                # never rescue an explicit full-time/unknown-format job for a strict
+                # Werkstudent/Part-time profile.
+                if not employment_ok:
+                    job.score = 0
+                    job.overall_score = 0
+                else:
+                    job.overall_score = calculate_overall_score(job.score, job.language_score, profile.get('language_weight', 35))
 
                 if profile['id'] == default_profile['id']:
                     is_new = upsert_job(job)
                     upsert_language_fit(job)
                     default_scored = job
-                    if job.score >= int(profile.get('min_score', 35)):
+                    if employment_ok and job.score >= int(profile.get('min_score', 35)):
                         source_stats[job.source]['job_fit'] += 1
-                    if job.language_score >= int(profile.get('min_language_score', 40)):
+                    if employment_ok and job.language_score >= int(profile.get('min_language_score', 40)):
                         source_stats[job.source]['language_fit'] += 1
                 elif is_new is None:
                     is_new = upsert_job(job)
@@ -87,7 +101,7 @@ async def run_search() -> dict:
                     eligible_language = False
                 if not profile.get('show_b2_stretch', True) and job.language_label == 'stretch':
                     eligible_language = False
-                eligible = job.overall_score >= int(profile.get('min_score', 35)) and eligible_language
+                eligible = employment_ok and job.overall_score >= int(profile.get('min_score', 35)) and eligible_language
                 if eligible:
                     profile_match_counts[profile['id']] += 1
                     if profile['id'] == default_profile['id']:
