@@ -1,117 +1,48 @@
-# JobTrack v8
+# JobTrack v9
 
-Self-hosted job discovery and application tracker for Berlin/Brandenburg roles, with language-aware ranking, application tracking, extensible sources and bidirectional feedback learning.
+Self-hosted job discovery, ranking and application tracking for Berlin/Brandenburg roles.
 
-## v8 highlights: Positive preference learning
+## v9: Multi-profile search
 
-JobTrack now learns not only from **Not suitable** decisions, but also from successful user actions and application outcomes.
+JobTrack can now run multiple career strategies in the same installation. Vacancies are stored once, but each enabled profile gets its own Job Fit, Language Fit and Overall Fit score.
+
+Default profiles:
+
+- **Werkstudent / Part-time** — Supply Chain, Procurement, Planning, Operations and Logistics student roles; English-first with German A2→B1.
+- **Full-time Supply Chain** — Supply Chain Manager, Operations Manager, Procurement Manager, Customer Supply Chain and senior specialist roles; prepared for the post-MBA transition.
+
+Each profile has independent:
+
+- search phrases
+- title / skill / employment-format scoring weights
+- negative keywords
+- target location terms
+- minimum Overall Fit
+- minimum Language Fit
+- German level and maximum preferred German requirement
+- Language Fit weight
+- B2 stretch / German-heavy behaviour
+- positive preference learning
+- Not-suitable penalty learning
+
+Use **Profiles** in the web UI to create, edit, enable, disable and select profiles. The Job Review Queue has a profile selector and immediately switches to the selected profile's scores and learning rules.
+
+## Profile-aware learning
+
+Learning is isolated per profile. Rejecting a role in the Werkstudent profile does not automatically penalize it in the Full-time profile.
 
 Positive signals:
 
-- **Suitable** → light positive signal
-- **Applied** → stronger positive signal
-- **Interview** → strong positive signal
-- **Offer** → strongest positive signal
+- Suitable
+- Applied
+- Interview
+- Offer
 
-Repeated updates of the same job/status are idempotent and do not inflate the model. Application milestones are cumulative: an `Offer` confirms `Applied + Interview + Offer` once each.
+Negative signals come from structured **Not suitable** reasons. Boost and penalty rules remain visible, reversible and capped.
 
-Positive rules can learn affinity for:
+Application Tracker remains global because an actual application is a single real-world application. Application milestones are learned by the profile where the job was originally marked Suitable; legacy applications without profile history fall back to the default profile.
 
-- role/title patterns
-- Supply Chain / Procurement / Operations skill terms
-- English-first or German-growth environments
-- specific companies, but only from stronger Interview / Offer outcomes
-
-Boosts are capped so learned preferences cannot overwhelm the explicit Job Fit model.
-
-## Bidirectional Search Learning
-
-The Learning page now displays two rule types:
-
-- **BOOST** — learned from Suitable / Applied / Interview / Offer
-- **PENALTY** — learned from Not suitable feedback
-
-Both types show scope, term, weight, evidence count and strongest signal. Every learned rule can be disabled or deleted.
-
-### Negative learning
-
-Structured Not-suitable reasons include:
-
-- wrong role / function
-- German requirement too high
-- wrong seniority
-- wrong employment type
-- wrong location
-- not interested in company
-- other
-
-Negative rules start small, strengthen gradually with repeated evidence and are capped.
-
-### Positive learning
-
-Positive event weights start approximately at:
-
-- Suitable: +4
-- Applied: +5
-- Interview: +9
-- Offer: +14
-
-Repeated evidence strengthens matching slowly. The total learned positive boost applied to one vacancy is capped at +30 Job Fit points.
-
-## Job Review Queue
-
-Each vacancy shows:
-
-- Overall Fit
-- Job Fit
-- Language Fit
-- language category
-- source
-- current review state
-- application stage
-- learned boost/penalty reasons when matched
-
-Review actions:
-
-- **Suitable** — adds the vacancy to Application Tracker as `To Apply` and records a positive preference signal.
-- **Maybe** — keeps it for later review without learning.
-- **Not suitable** — records a structured reason and optionally updates negative learning.
-
-## Learning database
-
-Feedback/learning tables are created automatically:
-
-- `job_feedback`
-- `learned_rules`
-- `positive_events`
-- `positive_rules`
-
-Existing jobs, applications, language scores, sources and settings remain intact.
-
-## Target Company Monitor
-
-Paste a company careers/jobs URL and JobTrack detects supported ATS platforms.
-
-Automatically monitored ATS:
-
-- Greenhouse
-- Lever
-- SmartRecruiters
-
-Safely recognised as manual shortcuts:
-
-- Workday
-- Teamtailor
-- Recruitee
-- SAP SuccessFactors
-- Personio
-- Workable
-- JOIN
-- unknown/company-owned career pages
-
-JobTrack does not bypass site access controls or scrape unsupported platforms.
-
-## Source Catalog
+## Job sources
 
 Automatic API/feed sources:
 
@@ -121,7 +52,7 @@ Automatic API/feed sources:
 - Greenhouse Job Board
 - Lever postings
 - SmartRecruiters company postings
-- Custom RSS / Atom
+- custom RSS / Atom
 
 Search-only shortcuts:
 
@@ -133,31 +64,28 @@ Search-only shortcuts:
 - Talent.com
 - Bundesagentur für Arbeit Jobsuche
 
-## Language-aware matching
+Unsupported sites are not scraped.
 
-JobTrack ranks each vacancy using:
+## Target Company Monitor
 
-- **Job Fit (0–100)**
-- **Language Fit (0–100)**
-- **Overall Fit (0–100)**
-
-Language categories:
-
-- English-first
-- German-growth
-- B2 stretch
-- German-heavy
-- Language unclear
-
-Default profile is tuned for English-first work while German progresses from A2 toward B1.
+Paste a careers/jobs URL. JobTrack can automatically configure supported Greenhouse, Lever and SmartRecruiters sources and safely store unsupported ATS pages as manual shortcuts.
 
 ## Application workflow
 
-Application Tracker stages:
-
 `To Apply → Applied → Interview → Rejected / Offer`
 
-At each search run, new Applied / Interview / Offer milestones are synchronized into positive learning exactly once.
+Each vacancy can also be reviewed as Suitable, Maybe or Not suitable.
+
+## Database
+
+v9 adds:
+
+- `search_profiles`
+- `job_profile_scores`
+- profile scoping to feedback and learned rules
+- profile scoping to positive events and boost rules
+
+Existing jobs, applications, sources and settings are preserved during migration.
 
 ## Quick start
 
@@ -175,18 +103,20 @@ http://SERVER_IP:8080
 
 ## Upgrade
 
-For v7 → v8, see `UPGRADE_V7_TO_V8.md`. Keep the existing `/data` Docker volume. Positive-learning tables are created automatically.
+See `UPGRADE_V8_TO_V9.md`. Keep the existing `/data` Docker volume and `APP_SECRET_KEY`.
+
+## CI
+
+GitHub Actions now runs on pushes to `main` and pull requests:
+
+```text
+python -m compileall -q app tests
+python -m pytest -q
+```
 
 ## Security
 
-- Do not expose port 8080 directly to the public internet without HTTPS.
-- Prefer Caddy/Nginx or private access through Tailscale/WireGuard.
-- Keep `APP_SECRET_KEY` stable.
-- Secret fields are write-only in the UI.
-- `.env` and SQLite database files are excluded by `.gitignore`.
-
-## Tests
-
-```bash
-python -m pytest -q
-```
+- Keep `.env` out of Git.
+- Keep `APP_SECRET_KEY` stable across upgrades.
+- Do not expose port 8080 publicly without HTTPS or private network access.
+- Prefer Caddy/Nginx or Tailscale/WireGuard.
