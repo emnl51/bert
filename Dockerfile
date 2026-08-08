@@ -10,4 +10,4 @@ COPY app ./app
 RUN mkdir -p /data
 
 EXPOSE 8080
-CMD ["uvicorn", "app.v13_main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.v14_main:app", "--host", "0.0.0.0", "--port", "8080"]
