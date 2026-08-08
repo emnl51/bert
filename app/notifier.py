@@ -13,8 +13,8 @@ LABELS = {
 }
 
 
-def build_text_digest(jobs: list[Job]) -> str:
-    lines = [f'JobTrack — {len(jobs)} new matches', '']
+def build_text_digest(jobs: list[Job], title: str = 'JobTrack') -> str:
+    lines = [f'{title} — {len(jobs)} new matches', '']
     for i, job in enumerate(jobs, 1):
         why = ', '.join(job.reasons[:4])
         language_why = ', '.join(job.language_reasons[:3])
@@ -30,14 +30,14 @@ def build_text_digest(jobs: list[Job]) -> str:
     return '\n'.join(lines)
 
 
-def send_email(jobs: list[Job], cfg: dict) -> bool:
+def send_email(jobs: list[Job], cfg: dict, title: str = 'JobTrack') -> bool:
     if not (cfg.get('smtp_host') and cfg.get('email_from') and cfg.get('email_to')):
         return False
     msg = EmailMessage()
-    msg['Subject'] = f'JobTrack — {len(jobs)} new matches'
+    msg['Subject'] = f'{title} — {len(jobs)} new matches'
     msg['From'] = cfg['email_from']
     msg['To'] = cfg['email_to']
-    msg.set_content(build_text_digest(jobs))
+    msg.set_content(build_text_digest(jobs, title=title))
     with smtplib.SMTP(cfg['smtp_host'], int(cfg.get('smtp_port', 587)), timeout=30) as smtp:
         if cfg.get('smtp_use_tls', True):
             smtp.starttls()
@@ -47,11 +47,11 @@ def send_email(jobs: list[Job], cfg: dict) -> bool:
     return True
 
 
-async def send_telegram(jobs: list[Job], cfg: dict) -> bool:
+async def send_telegram(jobs: list[Job], cfg: dict, title: str = 'JobTrack') -> bool:
     token, chat_id = cfg.get('telegram_bot_token'), cfg.get('telegram_chat_id')
     if not token or not chat_id:
         return False
-    text = build_text_digest(jobs)
+    text = build_text_digest(jobs, title=title)
     chunks = [text[i:i + 3800] for i in range(0, len(text), 3800)]
     url = f'https://api.telegram.org/bot{token}/sendMessage'
     async with httpx.AsyncClient(timeout=30) as client:
