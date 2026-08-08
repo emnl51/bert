@@ -1,6 +1,6 @@
 from .db import create_run, finish_run, mark_notified, upsert_job
 from .feedback_store import apply_learned_penalty
-from .positive_learning import apply_positive_boost
+from .positive_learning import apply_positive_boost, sync_application_events
 from .notifier import send_email, send_telegram
 from .language_store import upsert_language_fit
 from .providers import fetch_all_jobs
@@ -14,6 +14,7 @@ async def run_search() -> dict:
     provider_errors: list[str] = []
     notification_channels: list[str] = []
     try:
+        sync_application_events()
         search_terms = list(cfg['keywords'].get('search', {}).keys())
         fetched, provider_errors = await fetch_all_jobs(cfg['sources'], search_terms, cfg['target_location'])
         fresh_matches = []
