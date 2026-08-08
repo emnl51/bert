@@ -1,3 +1,4 @@
+import asyncio
 from copy import deepcopy
 from .db import list_sources, mark_notified, upsert_job
 from .employment_filter import assess_employment_fit, search_terms_for_profile
@@ -57,9 +58,6 @@ async def run_search_job(search_job_id: int) -> dict:
             job.score, job.reasons = score_job(job, profile['keywords'], location_terms)
             employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile)
             if not employment_ok:
-                # Do not store or mark employment-mismatched jobs as seen. If a provider
-                # later returns richer metadata proving the role is part-time, the job can
-                # be reconsidered and notified normally.
                 continue
             job.reasons.extend(employment_reasons)
             job.language_score, job.language_label, job.language_reasons = assess_language_fit(job, language_profile)
@@ -71,8 +69,11 @@ async def run_search_job(search_job_id: int) -> dict:
             if profile['hide_german_heavy'] and job.language_label == 'german_heavy': eligible=False
             if not profile['show_b2_stretch'] and job.language_label == 'stretch': eligible=False
             if eligible and candidate:
-                try: job.intelligence = analyze_job(job.key,candidate['id'],search_job_id)
-                except Exception as exc: job.reasons.append(f'intelligence-error: {exc}')
+                try:
+                    # Ollama enrichment is synchronous; keep it off the scheduler/event loop.
+                    job.intelligence = await asyncio.to_thread(analyze_job, job.key, candidate['id'], search_job_id)
+                except Exception as exc:
+                    job.reasons.append(f'intelligence-error: {exc}')
             if eligible:
                 fresh_for_this_search = mark_search_job_seen(search_job_id, job.key)
                 if fresh_for_this_search:
