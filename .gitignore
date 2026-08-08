@@ -1,5 +1,32 @@
+# Runtime configuration / secrets
 .env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 .pytest_cache/
-*.pyc
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Test / coverage output
+.coverage
+coverage.xml
+htmlcov/
+
+# Local databases and backups
 *.db
+*.db-*
+*.sqlite
+*.sqlite3
+backups/
+
+# Logs / local tooling
+*.log
+.DS_Store
+.idea/
+.vscode/
