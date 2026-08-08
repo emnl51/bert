@@ -14,7 +14,10 @@ _SECRET_PATTERNS = [
     re.compile(r'(?i)(api[_ -]?key|token|password|secret|authorization)(\s*[=:]\s*)([^\s,;]+)'),
     re.compile(r'(?i)(key|token|api_key)=([^&\s]+)'),
     re.compile(r'(?i)(bearer\s+)[A-Za-z0-9._~+\-/]+=*'),
+    re.compile(r'(https?://jooble\.org/api/)[^\s\'\"]+'),
 ]
+
+_IGNORE_PATTERNS = ('/api/logs', '/health', '/log-ui.js', '/favicon.ico', '/apple-touch-icon')
 
 
 def redact_log_text(value) -> str:
@@ -22,7 +25,13 @@ def redact_log_text(value) -> str:
     text = _SECRET_PATTERNS[0].sub(lambda m: f'{m.group(1)}{m.group(2)}***', text)
     text = _SECRET_PATTERNS[1].sub(lambda m: f'{m.group(1)}=***', text)
     text = _SECRET_PATTERNS[2].sub(lambda m: f'{m.group(1)}***', text)
+    text = _SECRET_PATTERNS[3].sub(lambda m: f'{m.group(1)}***', text)
     return text[:12000]
+
+
+def _ignore_message(message: str) -> bool:
+    lowered = message.lower()
+    return any(pattern in lowered for pattern in _IGNORE_PATTERNS)
 
 
 class MemoryLogHandler(logging.Handler):
@@ -30,6 +39,8 @@ class MemoryLogHandler(logging.Handler):
         global _next_id
         try:
             message = redact_log_text(self.format(record))
+            if _ignore_message(message):
+                return
             item = {
                 'id': 0,
                 'timestamp': datetime.fromtimestamp(record.created, timezone.utc).isoformat(),
@@ -61,9 +72,10 @@ def install_log_capture() -> None:
     logging.getLogger('jobtrack.logs').info('Web log capture started')
 
 
-def list_logs(limit: int = 300, level: str = '', query: str = '', after_id: int = 0) -> list[dict]:
+def list_logs(limit: int = 300, level: str = '', query: str = '', logger_name: str = '', after_id: int = 0) -> list[dict]:
     level = (level or '').upper().strip()
     query = (query or '').lower().strip()
+    logger_name = (logger_name or '').lower().strip()
     with _lock:
         rows = list(_entries)
     if after_id:
@@ -72,9 +84,11 @@ def list_logs(limit: int = 300, level: str = '', query: str = '', after_id: int 
         wanted = logging._nameToLevel.get(level, 0)
         if wanted:
             rows = [r for r in rows if logging._nameToLevel.get(r['level'], 0) >= wanted]
+    if logger_name:
+        rows = [r for r in rows if logger_name in r['logger'].lower()]
     if query:
         rows = [r for r in rows if query in f"{r['logger']} {r['message']}".lower()]
-    return rows[-max(1, min(int(limit), 1000)):]
+    return rows[-max(1, min(int(limit), 2000)):]
 
 
 def clear_logs() -> int:
