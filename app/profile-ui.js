@@ -21,4 +21,5 @@
   window.removeProfile=async id=>{if(!confirm('Delete this search profile and its profile-specific scores?'))return;try{await api(`/api/profiles/${id}`,{method:'DELETE'});await loadProfiles();toast('Profile deleted')}catch(e){toast(e.message,true)}};
   window.activateProfile=async id=>{window.activeProfileId=id;try{localStorage.setItem('jobtrack-profile',String(id))}catch(e){};const sel=$('reviewProfile');if(sel)sel.value=String(id);toast('Review profile changed');if(window.loadReviewJobs)await window.loadReviewJobs()};
   install();loadProfiles().catch(()=>{});
+  if(!document.querySelector('script[src="/search-job-ui.js"]')){const sc=document.createElement('script');sc.src='/search-job-ui.js';document.body.appendChild(sc)}
 })();
