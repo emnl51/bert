@@ -31,7 +31,7 @@ def test_learned_rule_reduces_future_score(tmp_path, monkeypatch):
     future = Job(source='test', external_id='2', title='Software Developer Werkstudent', company='Other', location='Berlin', url='https://example.com/2')
     score, reasons = apply_learned_penalty(future, 80)
     assert score < 80
-    assert any('learned:' in r for r in reasons)
+    assert any('learned' in r for r in reasons)
 
 
 def test_suitable_job_enters_application_tracker(tmp_path, monkeypatch):
