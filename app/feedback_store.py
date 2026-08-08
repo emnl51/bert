@@ -47,6 +47,8 @@ def _now() -> str:
 def ensure_feedback_schema() -> None:
     with connection() as con:
         con.executescript(FEEDBACK_SCHEMA)
+    from .positive_learning import ensure_positive_schema
+    ensure_positive_schema()
 
 
 def _normalise(text: str) -> str:
@@ -125,7 +127,14 @@ def record_feedback(job_key: str, suitability: str, reason: str = '', note: str 
         if suitability == 'suitable':
             con.execute('''INSERT INTO applications(job_key,status,created_at,updated_at) VALUES(?, 'to_apply', ?, ?)
                            ON CONFLICT(job_key) DO UPDATE SET updated_at=excluded.updated_at''', (job_key, now, now))
-    return {'job_key': job_key, 'suitability': suitability, 'reason': reason, 'learned_rule_ids': created_ids}
+    positive_ids: list[int] = []
+    if suitability == 'suitable' and learn:
+        from .positive_learning import record_positive_event
+        positive_ids = record_positive_event(job_key, 'suitable')['positive_rule_ids']
+    return {
+        'job_key': job_key, 'suitability': suitability, 'reason': reason,
+        'learned_rule_ids': created_ids, 'positive_rule_ids': positive_ids,
+    }
 
 
 def list_feedback(limit: int = 100) -> list[dict[str, Any]]:
@@ -139,17 +148,35 @@ def list_learned_rules() -> list[dict[str, Any]]:
     ensure_feedback_schema()
     with connection() as con:
         rows = con.execute('SELECT * FROM learned_rules ORDER BY enabled DESC,evidence_count DESC,ABS(weight) DESC,term').fetchall()
-    return [{**dict(r), 'enabled': bool(r['enabled'])} for r in rows]
+    negative = [{**dict(r), 'enabled': bool(r['enabled']), 'polarity': 'penalty', 'strongest_event': ''} for r in rows]
+    from .positive_learning import list_positive_rules
+    positive = []
+    for row in list_positive_rules():
+        item = dict(row)
+        # Negative IDs let the existing API route distinguish positive rules without changing its URL.
+        item['id'] = -int(item['id'])
+        item['polarity'] = 'boost'
+        item['source_reason'] = item.get('strongest_event', '')
+        positive.append(item)
+    return sorted(positive + negative, key=lambda r: (not r['enabled'], -r['evidence_count'], -abs(r['weight']), r['term']))
 
 
 def set_rule_enabled(rule_id: int, enabled: bool) -> None:
     ensure_feedback_schema()
+    if rule_id < 0:
+        from .positive_learning import set_positive_rule_enabled
+        set_positive_rule_enabled(abs(rule_id), enabled)
+        return
     with connection() as con:
         con.execute('UPDATE learned_rules SET enabled=?,updated_at=? WHERE id=?', (int(enabled), _now(), rule_id))
 
 
 def delete_rule(rule_id: int) -> None:
     ensure_feedback_schema()
+    if rule_id < 0:
+        from .positive_learning import delete_positive_rule
+        delete_positive_rule(abs(rule_id))
+        return
     with connection() as con:
         con.execute('DELETE FROM learned_rules WHERE id=?', (rule_id,))
 
@@ -181,4 +208,12 @@ def feedback_stats() -> dict[str, int]:
         total = con.execute('SELECT COUNT(*) FROM job_feedback').fetchone()[0]
         unsuitable = con.execute("SELECT COUNT(*) FROM job_feedback WHERE suitability='not_suitable'").fetchone()[0]
         rules = con.execute('SELECT COUNT(*) FROM learned_rules WHERE enabled=1').fetchone()[0]
-    return {'feedback_total': total, 'not_suitable': unsuitable, 'active_rules': rules}
+    from .positive_learning import positive_stats
+    p = positive_stats()
+    return {
+        'feedback_total': total,
+        'not_suitable': unsuitable,
+        'active_rules': rules + p['positive_rules'],
+        'negative_rules': rules,
+        **p,
+    }
