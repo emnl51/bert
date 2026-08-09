@@ -1,5 +1,6 @@
 (() => {
   const $ = id => document.getElementById(id);
+  const SHELL = window.APP_SHELL || {};
   const NAV = {
     overview:['⌂','Overview'], searchJobs:['▤','Jobs'], jobReview:['✓','Job Review'],
     applications:['→','Applications'], intelligence:['◇','Intelligence'], candidates:['◎','Candidate Profiles'],
@@ -104,7 +105,9 @@
     const app=document.querySelector('.app'), side=document.querySelector('.side'), top=document.querySelector('.top'), brand=document.querySelector('.brand');
     if(!app||!side||!top||!brand) return setTimeout(installShell,80);
     installStyles();
-    brand.innerHTML='<div class="jt-brand-row"><div><span class="jt-brand-text">JobTrack</span><small>Smart Job Search · v16</small></div><button class="jt-collapse" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">‹</button></div>';
+    brand.innerHTML='<div class="jt-brand-row"><div><span class="jt-brand-text"></span><small></small></div><button class="jt-collapse" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">‹</button></div>';
+    brand.querySelector('.jt-brand-text').textContent=String(SHELL.appName||'JobTrack');
+    brand.querySelector('small').textContent=`Smart Job Search · v${String(SHELL.version||'16')}`;
     const mobile=document.createElement('button'); mobile.id='jtMobileMenu'; mobile.className='jt-mobile-menu'; mobile.type='button'; mobile.setAttribute('aria-label','Open navigation'); mobile.setAttribute('aria-expanded','false'); mobile.textContent='☰'; top.insertBefore(mobile,top.firstChild);
     const overlay=document.createElement('div'); overlay.id='jtSidebarOverlay'; overlay.className='jt-sidebar-overlay'; document.body.appendChild(overlay);
     try{if(localStorage.getItem('jobtrack-sidebar-collapsed')==='1')app.classList.add('jt-collapsed')}catch(_){ }

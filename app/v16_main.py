@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi import Depends, HTTPException
@@ -35,8 +36,12 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
     html = Path("app/templates/index.html").read_text(encoding="utf-8").replace("{{ app_name }}", settings.app_name)
     html = html.replace(
         "Supply Chain Tracker<small>Berlin / Brandenburg · v3</small>",
-        f"JobTrack<small>Smart Job Search · v{VERSION}</small>",
+        f"{settings.app_name}<small>Smart Job Search · v{VERSION}</small>",
     )
+    shell_config = json.dumps(
+        {"appName": settings.app_name, "version": VERSION},
+        ensure_ascii=True,
+    ).replace("<", "\\u003c")
     scripts = (
         '<script src="/language-ui.js"></script>'
         '<script src="/source-ui.js"></script>'
@@ -52,6 +57,7 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
         '<script src="/database-ui.js"></script>'
         '<script src="/log-ui.js"></script>'
         '<script src="/update-ui.js"></script>'
+        f"<script>window.APP_SHELL={shell_config};</script>"
         '<script src="/ui-shell.js"></script>'
     )
     return HTMLResponse(html.replace("</body>", scripts + "</body>"))
