@@ -48,6 +48,7 @@ class SearchJobPayload(BaseModel):
     profile_id: int
     target_location: str = "Berlin"
     location_terms: list[str] = []
+    search_terms: list[str] = Field(default_factory=list, max_length=50)
     source_ids: list[int] = []
     frequency: str = "weekly"
     day_of_week: str = "mon"
