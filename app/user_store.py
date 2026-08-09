@@ -163,7 +163,11 @@ def create_registration(email: str, requested_by: str, lifetime_hours: int | Non
     ensure_user_schema()
     normalized = _normalize_email(email)
     now = _now()
-    expires = now + timedelta(hours=lifetime_hours or settings.registration_lifetime_hours)
+    if lifetime_hours is None:
+        from .system_mail import registration_lifetime_hours
+
+        lifetime_hours = registration_lifetime_hours()
+    expires = now + timedelta(hours=lifetime_hours)
     token = secrets.token_urlsafe(32)
     with connection() as con:
         existing = con.execute("SELECT id FROM users WHERE email=?", (normalized,)).fetchone()

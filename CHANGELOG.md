@@ -4,6 +4,7 @@
 
 ### Added
 
+- Adds an administrator-only System Email page for activation-link URL, lifetime and SMTP configuration, including encrypted password storage and test delivery.
 - Adds a dedicated sign-in page for administrators, registered users and new-user registration.
 - Adds self-service account registration with single-use, time-limited email activation links.
 - Adds Argon2id password hashing, signed administrator sessions and database-backed user sessions.

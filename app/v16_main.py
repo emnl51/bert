@@ -122,6 +122,21 @@ class UserStatusPayload(BaseModel):
     status: str
 
 
+class SystemEmailSettingsPayload(BaseModel):
+    public_base_url: str = Field(default="", max_length=2048)
+    registration_lifetime_hours: int = Field(default=24, ge=1, le=168)
+    system_smtp_host: str = Field(default="", max_length=253)
+    system_smtp_port: int = Field(default=587, ge=1, le=65535)
+    system_smtp_username: str = Field(default="", max_length=320)
+    system_smtp_password: str = Field(default="", max_length=1024)
+    system_smtp_use_tls: bool = True
+    system_email_from: str = Field(default="", max_length=320)
+
+
+class SystemEmailTestPayload(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
 @app.post("/auth/admin-login")
 def admin_login(payload: AdminLoginPayload, request: Request):
     if not authenticate_admin(request, payload.username, payload.password):
@@ -290,6 +305,7 @@ def dashboard(request: Request, actor: dict = Depends(require_workspace)):
         '<script src="/log-ui.js"></script>'
         '<script src="/update-ui.js"></script>'
         '<script src="/users-ui.js"></script>'
+        '<script src="/system-email-ui.js"></script>'
     )
     scripts = (
         business_scripts + (admin_scripts if is_admin else "") + f"<script>window.APP_SHELL={shell_config};</script>"
@@ -363,6 +379,69 @@ def ui_shell(_: dict = Depends(require_workspace)):
 @app.get("/users-ui.js")
 def users_ui(_: str = Depends(require_admin)):
     return Response(Path("app/users-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
+
+
+@app.get("/system-email-ui.js")
+def system_email_ui(_: str = Depends(require_admin)):
+    return Response(Path("app/system-email-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
+
+
+@app.get("/api/admin/system-email")
+def api_system_email_settings(_: str = Depends(require_admin)):
+    try:
+        return system_mail.get_system_mail_config(mask_secret=True)
+    except SystemMailError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.put("/api/admin/system-email")
+def api_update_system_email_settings(
+    payload: SystemEmailSettingsPayload,
+    request: Request,
+    admin: str = Depends(require_admin),
+):
+    require_same_origin(request)
+    data = payload.model_dump()
+    base_url = data["public_base_url"].strip().rstrip("/")
+    if base_url:
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(base_url)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise HTTPException(400, "Public base URL must be an absolute HTTP or HTTPS URL")
+    data["public_base_url"] = base_url
+    data["system_smtp_host"] = data["system_smtp_host"].strip()
+    data["system_smtp_username"] = data["system_smtp_username"].strip()
+    data["system_email_from"] = data["system_email_from"].strip()
+    system_mail.save_system_mail_config(data)
+    from .user_store import record_audit
+
+    record_audit(admin, "system_email.settings_updated")
+    return {"ok": True, "configured": system_mail.get_system_mail_config(mask_secret=True)["configured"]}
+
+
+@app.post("/api/admin/system-email/test")
+def api_test_system_email(
+    payload: SystemEmailTestPayload,
+    request: Request,
+    admin: str = Depends(require_admin),
+):
+    require_same_origin(request)
+    try:
+        system_mail.send_test_email(payload.email)
+    except SystemMailError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    from .user_store import record_audit
+
+    record_audit(admin, "system_email.test_sent", payload.email.strip().lower())
+    return {"ok": True}
 
 
 @app.get("/api/admin/users")

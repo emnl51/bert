@@ -64,6 +64,7 @@ def test_public_registration_activation_and_user_session(tmp_path, monkeypatch):
     assert '"isAdmin": false' in workspace.text
     assert '<script src="/users-ui.js"></script>' not in workspace.text
     assert '<script src="/database-ui.js"></script>' not in workspace.text
+    assert '<script src="/system-email-ui.js"></script>' not in workspace.text
     assert registration_for_token(sent["token"]) is None
 
 
