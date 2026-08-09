@@ -7,7 +7,8 @@ from .secrets import encrypt_secret, decrypt_secret
 SEARCH_JOB_SCHEMA = """
 CREATE TABLE IF NOT EXISTS search_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
+    user_id INTEGER,
+    name TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
     profile_id INTEGER NOT NULL,
     inherit_location INTEGER NOT NULL DEFAULT 0,
@@ -35,6 +36,8 @@ CREATE TABLE IF NOT EXISTS search_jobs (
     last_match_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    UNIQUE(user_id, name),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(profile_id) REFERENCES search_profiles(id) ON DELETE RESTRICT
 );
 CREATE INDEX IF NOT EXISTS idx_search_jobs_enabled ON search_jobs(enabled);
@@ -93,13 +96,62 @@ def _normalise_terms(values: list[Any] | None) -> list[str] | None:
     return terms
 
 
-def ensure_search_job_schema() -> None:
+def _migrate_search_job_ownership(con) -> None:
+    columns = {row[1] for row in con.execute("PRAGMA table_info(search_jobs)").fetchall()}
+    if not columns or "user_id" in columns:
+        return
+    con.execute("PRAGMA foreign_keys=OFF")
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        con.execute(
+            """CREATE TABLE search_jobs_v18 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,name TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,profile_id INTEGER NOT NULL,
+            inherit_location INTEGER NOT NULL DEFAULT 0,target_location TEXT NOT NULL DEFAULT 'Berlin',
+            location_terms_json TEXT NOT NULL DEFAULT '[]',search_terms_json TEXT NOT NULL DEFAULT '[]',
+            allowlist_terms_json TEXT,blocklist_terms_json TEXT,allowlist_boost INTEGER NOT NULL DEFAULT 15,
+            source_ids_json TEXT NOT NULL DEFAULT '[]',frequency TEXT NOT NULL DEFAULT 'weekly',
+            day_of_week TEXT NOT NULL DEFAULT 'mon',hour INTEGER NOT NULL DEFAULT 8,minute INTEGER NOT NULL DEFAULT 0,
+            interval_hours INTEGER NOT NULL DEFAULT 12,min_score_override INTEGER,min_language_score_override INTEGER,
+            max_results INTEGER NOT NULL DEFAULT 20,notify_telegram INTEGER NOT NULL DEFAULT 0,
+            notify_email INTEGER NOT NULL DEFAULT 0,notification_json TEXT NOT NULL DEFAULT '{}',
+            secrets_json TEXT NOT NULL DEFAULT '{}',last_run_at TEXT,last_run_status TEXT,
+            last_match_count INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+            UNIQUE(user_id,name),FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(profile_id) REFERENCES search_profiles(id) ON DELETE RESTRICT)"""
+        )
+        con.execute(
+            """INSERT INTO search_jobs_v18
+            (id,user_id,name,enabled,profile_id,inherit_location,target_location,location_terms_json,
+             search_terms_json,allowlist_terms_json,blocklist_terms_json,allowlist_boost,source_ids_json,
+             frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,
+             max_results,notify_telegram,notify_email,notification_json,secrets_json,last_run_at,last_run_status,
+             last_match_count,created_at,updated_at)
+            SELECT id,NULL,name,enabled,profile_id,COALESCE(inherit_location,0),target_location,location_terms_json,
+             COALESCE(search_terms_json,'[]'),allowlist_terms_json,blocklist_terms_json,COALESCE(allowlist_boost,15),
+             source_ids_json,frequency,day_of_week,hour,minute,interval_hours,min_score_override,
+             min_language_score_override,max_results,notify_telegram,notify_email,notification_json,secrets_json,
+             last_run_at,last_run_status,last_match_count,created_at,updated_at FROM search_jobs"""
+        )
+        con.execute("DROP TABLE search_jobs")
+        con.execute("ALTER TABLE search_jobs_v18 RENAME TO search_jobs")
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.execute("PRAGMA foreign_keys=ON")
+
+
+def ensure_search_job_schema(user_id: int | None = None) -> None:
     from .profile_store import ensure_profile_schema, get_profile
 
-    ensure_profile_schema()
-    p = get_profile()
+    ensure_profile_schema(user_id)
+    p = get_profile(user_id=user_id)
     with connection() as con:
         con.executescript(SEARCH_JOB_SCHEMA)
+        _migrate_search_job_ownership(con)
+        con.execute("CREATE INDEX IF NOT EXISTS idx_search_jobs_enabled ON search_jobs(user_id,enabled)")
         columns = {row[1] for row in con.execute("PRAGMA table_info(search_jobs)").fetchall()}
         if "search_terms_json" not in columns:
             con.execute("ALTER TABLE search_jobs ADD COLUMN search_terms_json TEXT NOT NULL DEFAULT '[]'")
@@ -111,12 +163,13 @@ def ensure_search_job_schema() -> None:
             con.execute("ALTER TABLE search_jobs ADD COLUMN blocklist_terms_json TEXT")
         if "allowlist_boost" not in columns:
             con.execute("ALTER TABLE search_jobs ADD COLUMN allowlist_boost INTEGER NOT NULL DEFAULT 15")
-        if con.execute("SELECT COUNT(*) FROM search_jobs").fetchone()[0] == 0 and p:
+        if con.execute("SELECT COUNT(*) FROM search_jobs WHERE user_id IS ?", (user_id,)).fetchone()[0] == 0 and p:
             now = _now()
             con.execute(
-                """INSERT INTO search_jobs(name,enabled,profile_id,target_location,location_terms_json,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,max_results,created_at,updated_at)
-                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO search_jobs(user_id,name,enabled,profile_id,target_location,location_terms_json,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,max_results,created_at,updated_at)
+                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
+                    user_id,
                     "Werkstudent Berlin Weekly",
                     1,
                     p["id"],
@@ -152,34 +205,67 @@ def _decode(row, mask_secrets: bool) -> dict[str, Any]:
     return d
 
 
-def list_search_jobs(mask_secrets: bool = True) -> list[dict[str, Any]]:
-    ensure_search_job_schema()
+def list_search_jobs(mask_secrets: bool = True, user_id: int | None = None) -> list[dict[str, Any]]:
+    ensure_search_job_schema(user_id)
     with connection() as con:
         rows = con.execute(
-            """SELECT sj.*,sp.name AS profile_name FROM search_jobs sj JOIN search_profiles sp ON sp.id=sj.profile_id ORDER BY sj.enabled DESC,sj.id"""
+            """SELECT sj.*,sp.name AS profile_name FROM search_jobs sj JOIN search_profiles sp ON sp.id=sj.profile_id
+               WHERE sj.user_id IS ? AND sp.user_id IS ? ORDER BY sj.enabled DESC,sj.id""",
+            (user_id, user_id),
         ).fetchall()
     return [_decode(r, mask_secrets) for r in rows]
 
 
-def get_search_job(job_id: int, mask_secrets: bool = False) -> dict[str, Any] | None:
+def list_all_search_jobs(mask_secrets: bool = True) -> list[dict[str, Any]]:
+    """Scheduler-only view across owners; never expose this through a user API."""
+    ensure_search_job_schema()
+    with connection() as con:
+        rows = con.execute(
+            """SELECT sj.*,sp.name AS profile_name FROM search_jobs sj
+               JOIN search_profiles sp ON sp.id=sj.profile_id ORDER BY sj.enabled DESC,sj.id"""
+        ).fetchall()
+    return [_decode(row, mask_secrets) for row in rows]
+
+
+def get_search_job(job_id: int, mask_secrets: bool = False, user_id: int | None = None) -> dict[str, Any] | None:
+    ensure_search_job_schema(user_id)
+    with connection() as con:
+        row = con.execute(
+            """SELECT sj.*,sp.name AS profile_name FROM search_jobs sj JOIN search_profiles sp ON sp.id=sj.profile_id
+               WHERE sj.id=? AND sj.user_id IS ? AND sp.user_id IS ?""",
+            (job_id, user_id, user_id),
+        ).fetchone()
+    return _decode(row, mask_secrets) if row else None
+
+
+def get_search_job_any(job_id: int, mask_secrets: bool = False) -> dict[str, Any] | None:
+    """Worker-only lookup by globally unique id."""
     ensure_search_job_schema()
     with connection() as con:
         row = con.execute(
-            """SELECT sj.*,sp.name AS profile_name FROM search_jobs sj JOIN search_profiles sp ON sp.id=sj.profile_id WHERE sj.id=?""",
+            """SELECT sj.*,sp.name AS profile_name FROM search_jobs sj
+               JOIN search_profiles sp ON sp.id=sj.profile_id WHERE sj.id=?""",
             (job_id,),
         ).fetchone()
     return _decode(row, mask_secrets) if row else None
 
 
-def save_search_job(data: dict[str, Any], job_id: int | None = None) -> int:
-    ensure_search_job_schema()
+def save_search_job(data: dict[str, Any], job_id: int | None = None, user_id: int | None = None) -> int:
+    ensure_search_job_schema(user_id)
     now = _now()
     notification = dict(data.get("notification") or {})
     supplied_secrets = dict(data.get("secrets") or {})
     with connection() as con:
+        profile = con.execute(
+            "SELECT id FROM search_profiles WHERE id=? AND user_id IS ?", (int(data["profile_id"]), user_id)
+        ).fetchone()
+        if not profile:
+            raise ValueError("Profile not found")
         existing_secrets = {}
         if job_id:
-            row = con.execute("SELECT secrets_json FROM search_jobs WHERE id=?", (job_id,)).fetchone()
+            row = con.execute(
+                "SELECT secrets_json FROM search_jobs WHERE id=? AND user_id IS ?", (job_id, user_id)
+            ).fetchone()
             if not row:
                 raise ValueError("Search job not found")
             existing_secrets = json.loads(row["secrets_json"] or "{}")
@@ -190,6 +276,7 @@ def save_search_job(data: dict[str, Any], job_id: int | None = None) -> int:
         allowlist_terms = _normalise_terms(data.get("allowlist_terms"))
         blocklist_terms = _normalise_terms(data.get("blocklist_terms"))
         vals = {
+            "user_id": user_id,
             "name": str(data.get("name", "Search Job")).strip(),
             "enabled": int(bool(data.get("enabled", True))),
             "profile_id": int(data["profile_id"]),
@@ -221,22 +308,22 @@ def save_search_job(data: dict[str, Any], job_id: int | None = None) -> int:
         }
         if job_id:
             con.execute(
-                """UPDATE search_jobs SET name=:name,enabled=:enabled,profile_id=:profile_id,inherit_location=:inherit_location,target_location=:target_location,location_terms_json=:location_terms_json,search_terms_json=:search_terms_json,allowlist_terms_json=:allowlist_terms_json,blocklist_terms_json=:blocklist_terms_json,allowlist_boost=:allowlist_boost,source_ids_json=:source_ids_json,frequency=:frequency,day_of_week=:day_of_week,hour=:hour,minute=:minute,interval_hours=:interval_hours,min_score_override=:min_score_override,min_language_score_override=:min_language_score_override,max_results=:max_results,notify_telegram=:notify_telegram,notify_email=:notify_email,notification_json=:notification_json,secrets_json=:secrets_json,updated_at=:updated_at WHERE id=:id""",
+                """UPDATE search_jobs SET name=:name,enabled=:enabled,profile_id=:profile_id,inherit_location=:inherit_location,target_location=:target_location,location_terms_json=:location_terms_json,search_terms_json=:search_terms_json,allowlist_terms_json=:allowlist_terms_json,blocklist_terms_json=:blocklist_terms_json,allowlist_boost=:allowlist_boost,source_ids_json=:source_ids_json,frequency=:frequency,day_of_week=:day_of_week,hour=:hour,minute=:minute,interval_hours=:interval_hours,min_score_override=:min_score_override,min_language_score_override=:min_language_score_override,max_results=:max_results,notify_telegram=:notify_telegram,notify_email=:notify_email,notification_json=:notification_json,secrets_json=:secrets_json,updated_at=:updated_at WHERE id=:id AND user_id IS :user_id""",
                 {**vals, "id": job_id},
             )
             return job_id
         cur = con.execute(
-            """INSERT INTO search_jobs(name,enabled,profile_id,inherit_location,target_location,location_terms_json,search_terms_json,allowlist_terms_json,blocklist_terms_json,allowlist_boost,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,max_results,notify_telegram,notify_email,notification_json,secrets_json,created_at,updated_at)
-                           VALUES(:name,:enabled,:profile_id,:inherit_location,:target_location,:location_terms_json,:search_terms_json,:allowlist_terms_json,:blocklist_terms_json,:allowlist_boost,:source_ids_json,:frequency,:day_of_week,:hour,:minute,:interval_hours,:min_score_override,:min_language_score_override,:max_results,:notify_telegram,:notify_email,:notification_json,:secrets_json,:created_at,:updated_at)""",
+            """INSERT INTO search_jobs(user_id,name,enabled,profile_id,inherit_location,target_location,location_terms_json,search_terms_json,allowlist_terms_json,blocklist_terms_json,allowlist_boost,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,max_results,notify_telegram,notify_email,notification_json,secrets_json,created_at,updated_at)
+                           VALUES(:user_id,:name,:enabled,:profile_id,:inherit_location,:target_location,:location_terms_json,:search_terms_json,:allowlist_terms_json,:blocklist_terms_json,:allowlist_boost,:source_ids_json,:frequency,:day_of_week,:hour,:minute,:interval_hours,:min_score_override,:min_language_score_override,:max_results,:notify_telegram,:notify_email,:notification_json,:secrets_json,:created_at,:updated_at)""",
             {**vals, "created_at": now},
         )
         return int(cur.lastrowid)
 
 
-def delete_search_job(job_id: int) -> None:
-    ensure_search_job_schema()
+def delete_search_job(job_id: int, user_id: int | None = None) -> None:
+    ensure_search_job_schema(user_id)
     with connection() as con:
-        con.execute("DELETE FROM search_jobs WHERE id=?", (job_id,))
+        con.execute("DELETE FROM search_jobs WHERE id=? AND user_id IS ?", (job_id, user_id))
 
 
 def mark_search_job_seen(search_job_id: int, job_key: str) -> bool:
@@ -316,12 +403,14 @@ def finish_search_job_run(
         )
 
 
-def list_search_job_runs(job_id: int | None = None, limit: int = 100) -> list[dict[str, Any]]:
-    ensure_search_job_schema()
-    params = []
-    where = ""
+def list_search_job_runs(
+    job_id: int | None = None, limit: int = 100, user_id: int | None = None
+) -> list[dict[str, Any]]:
+    ensure_search_job_schema(user_id)
+    params: list[Any] = [user_id]
+    where = "WHERE sj.user_id IS ?"
     if job_id:
-        where = "WHERE r.search_job_id=?"
+        where += " AND r.search_job_id=?"
         params.append(job_id)
     params.append(limit)
     with connection() as con:

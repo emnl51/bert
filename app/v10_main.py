@@ -16,7 +16,7 @@ from .search_job_store import (
     list_search_jobs,
     save_search_job,
 )
-from .security import require_admin
+from .security import require_workspace
 from .schedulers.search_jobs import reschedule_search_jobs, search_scheduler
 
 app = legacy.app
@@ -69,30 +69,35 @@ class SearchJobPayload(BaseModel):
 
 
 @app.get("/search-job-ui.js")
-def search_job_ui(_: str = Depends(require_admin)):
+def search_job_ui(_: dict = Depends(require_workspace)):
     from pathlib import Path
 
     return Response(Path("app/search-job-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
 @app.get("/api/search-jobs")
-def api_search_jobs(_: str = Depends(require_admin)):
-    jobs = list_search_jobs(mask_secrets=True)
+def api_search_jobs(actor: dict = Depends(require_workspace)):
+    user_id = actor["user_id"]
+    jobs = list_search_jobs(mask_secrets=True, user_id=user_id)
     next_runs = {
         j.id.replace("search_job_", ""): j.next_run_time.isoformat() if j.next_run_time else None
         for j in search_scheduler.get_jobs()
     }
     for sj in jobs:
         sj["next_run"] = next_runs.get(str(sj["id"]))
-    return {"search_jobs": jobs, "profiles": list_profiles(), "sources": list_sources(mask_secrets=True)}
+    return {
+        "search_jobs": jobs,
+        "profiles": list_profiles(user_id=user_id),
+        "sources": list_sources(mask_secrets=True),
+    }
 
 
 @app.post("/api/search-jobs")
-def create_search_job(payload: SearchJobPayload, _: str = Depends(require_admin)):
+def create_search_job(payload: SearchJobPayload, actor: dict = Depends(require_workspace)):
     if payload.frequency not in ("disabled", "interval", "daily", "weekly"):
         raise HTTPException(400, "Invalid frequency")
     try:
-        job_id = save_search_job(payload.model_dump())
+        job_id = save_search_job(payload.model_dump(), user_id=actor["user_id"])
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
     reschedule_search_jobs()
@@ -100,11 +105,12 @@ def create_search_job(payload: SearchJobPayload, _: str = Depends(require_admin)
 
 
 @app.put("/api/search-jobs/{job_id}")
-def update_search_job(job_id: int, payload: SearchJobPayload, _: str = Depends(require_admin)):
-    if not get_search_job(job_id, True):
+def update_search_job(job_id: int, payload: SearchJobPayload, actor: dict = Depends(require_workspace)):
+    user_id = actor["user_id"]
+    if not get_search_job(job_id, True, user_id=user_id):
         raise HTTPException(404, "Search job not found")
     try:
-        save_search_job(payload.model_dump(), job_id=job_id)
+        save_search_job(payload.model_dump(), job_id=job_id, user_id=user_id)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
     reschedule_search_jobs()
@@ -112,15 +118,17 @@ def update_search_job(job_id: int, payload: SearchJobPayload, _: str = Depends(r
 
 
 @app.delete("/api/search-jobs/{job_id}")
-def remove_search_job(job_id: int, _: str = Depends(require_admin)):
-    delete_search_job(job_id)
+def remove_search_job(job_id: int, actor: dict = Depends(require_workspace)):
+    if not get_search_job(job_id, True, user_id=actor["user_id"]):
+        raise HTTPException(404, "Search job not found")
+    delete_search_job(job_id, user_id=actor["user_id"])
     reschedule_search_jobs()
     return {"ok": True}
 
 
 @app.post("/api/search-jobs/{job_id}/run")
-async def run_search_job_now(job_id: int, _: str = Depends(require_admin)):
-    if not get_search_job(job_id, False):
+async def run_search_job_now(job_id: int, actor: dict = Depends(require_workspace)):
+    if not get_search_job(job_id, False, user_id=actor["user_id"]):
         raise HTTPException(404, "Search job not found")
     try:
         return {"ok": True, **await run_search_job(job_id)}
@@ -129,20 +137,22 @@ async def run_search_job_now(job_id: int, _: str = Depends(require_admin)):
 
 
 @app.get("/api/search-jobs/{job_id}/runs")
-def search_job_runs(job_id: int, _: str = Depends(require_admin)):
-    return {"runs": list_search_job_runs(job_id, 100)}
+def search_job_runs(job_id: int, actor: dict = Depends(require_workspace)):
+    if not get_search_job(job_id, True, user_id=actor["user_id"]):
+        raise HTTPException(404, "Search job not found")
+    return {"runs": list_search_job_runs(job_id, 100, user_id=actor["user_id"])}
 
 
 @app.get("/api/search-job-runs")
-def all_search_job_runs(_: str = Depends(require_admin)):
-    return {"runs": list_search_job_runs(None, 100)}
+def all_search_job_runs(actor: dict = Depends(require_workspace)):
+    return {"runs": list_search_job_runs(None, 100, user_id=actor["user_id"])}
 
 
 @app.get("/api/v10-health")
-def v10_health(_: str = Depends(require_admin)):
+def v10_health(actor: dict = Depends(require_workspace)):
     return {
         "status": "ok",
         "version": "10.0.0",
-        "search_jobs": len(list_search_jobs()),
+        "search_jobs": len(list_search_jobs(user_id=actor["user_id"])),
         "scheduled_jobs": len(search_scheduler.get_jobs()),
     }

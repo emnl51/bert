@@ -1,6 +1,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const SHELL = window.APP_SHELL || {};
+  const USER_HIDDEN_TABS = new Set(['sources','search','keywords','runs','users','database','logs','updates']);
   const NAV = {
     overview:['⌂','Overview'], searchJobs:['▤','Jobs'], jobReview:['✓','Job Review'],
     applications:['→','Applications'], intelligence:['◇','Intelligence'], candidates:['◎','Candidate Profiles'],
@@ -105,6 +106,10 @@
     const app=document.querySelector('.app'), side=document.querySelector('.side'), top=document.querySelector('.top'), brand=document.querySelector('.brand');
     if(!app||!side||!top||!brand) return setTimeout(installShell,80);
     installStyles();
+    if(!SHELL.isAdmin){
+      document.querySelectorAll('.nav button[data-tab]').forEach(btn=>{if(USER_HIDDEN_TABS.has(btn.dataset.tab))btn.remove()});
+      document.querySelector('[onclick="runNow()"]')?.remove();
+    }
     brand.innerHTML='<div class="jt-brand-row"><div><span class="jt-brand-text"></span><small></small></div><button class="jt-collapse" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">‹</button></div>';
     brand.querySelector('.jt-brand-text').textContent=String(SHELL.appName||'JobTrack');
     brand.querySelector('small').textContent=`Smart Job Search · v${String(SHELL.version||'16')}`;

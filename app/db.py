@@ -60,6 +60,15 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL DEFAULT '',
+    is_secret INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(user_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -81,16 +90,30 @@ CREATE TABLE IF NOT EXISTS keywords (
 );
 
 CREATE TABLE IF NOT EXISTS applications (
-    job_key TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_key TEXT NOT NULL DEFAULT 'admin',
+    user_id INTEGER,
+    job_key TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'to_apply',
     applied_at TEXT,
     notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    UNIQUE(owner_key, job_key),
     FOREIGN KEY(job_key) REFERENCES jobs(job_key) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS user_job_state (
+    owner_key TEXT NOT NULL,
+    user_id INTEGER,
+    job_key TEXT NOT NULL,
+    decision TEXT NOT NULL DEFAULT 'unreviewed',
+    decision_at TEXT,
+    PRIMARY KEY(owner_key, job_key),
+    FOREIGN KEY(job_key) REFERENCES jobs(job_key) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS search_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,6 +225,35 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _owner_key(user_id: int | None) -> str:
+    return "admin" if user_id is None else f"user:{int(user_id)}"
+
+
+def _migrate_application_ownership(con) -> None:
+    columns = {row[1] for row in con.execute("PRAGMA table_info(applications)").fetchall()}
+    if not columns or "owner_key" in columns:
+        return
+    con.execute("ALTER TABLE applications RENAME TO applications_legacy_v18")
+    con.execute(
+        """CREATE TABLE applications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,owner_key TEXT NOT NULL DEFAULT 'admin',user_id INTEGER,job_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'to_apply',applied_at TEXT,notes TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(owner_key,job_key),
+        FOREIGN KEY(job_key) REFERENCES jobs(job_key) ON DELETE CASCADE)"""
+    )
+    con.execute(
+        """INSERT INTO applications(owner_key,user_id,job_key,status,applied_at,notes,created_at,updated_at)
+        SELECT 'admin',NULL,job_key,status,applied_at,notes,created_at,updated_at FROM applications_legacy_v18"""
+    )
+    con.execute("DROP TABLE applications_legacy_v18")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(updated_at DESC)")
+    con.execute(
+        """INSERT OR IGNORE INTO user_job_state(owner_key,user_id,job_key,decision,decision_at)
+        SELECT 'admin',NULL,job_key,decision,decision_at FROM jobs WHERE decision!='unreviewed'"""
+    )
+
+
 def _secure_database_file() -> None:
     """Restrict SQLite file permissions to owner-only (0600).
 
@@ -233,6 +285,7 @@ def _init_db_unlocked() -> None:
         os.makedirs(folder, exist_ok=True)
     with _connect() as con:
         con.executescript(SCHEMA)
+        _migrate_application_ownership(con)
         # Lightweight in-place migration for databases created by v1/v2.
         job_columns = {row[1] for row in con.execute("PRAGMA table_info(jobs)").fetchall()}
         if "decision" not in job_columns:
@@ -314,19 +367,32 @@ def _connect() -> sqlite3.Connection:
     return con
 
 
-def set_setting(key: str, value: str, is_secret: bool = False) -> None:
+def set_setting(key: str, value: str, is_secret: bool = False, user_id: int | None = None) -> None:
     stored = encrypt_secret(value) if is_secret and value else value
     with connection() as con:
-        con.execute(
-            """INSERT INTO app_settings(key,value,is_secret,updated_at) VALUES(?,?,?,?)
-               ON CONFLICT(key) DO UPDATE SET value=excluded.value,is_secret=excluded.is_secret,updated_at=excluded.updated_at""",
-            (key, stored, int(is_secret), _now()),
-        )
+        if user_id is None:
+            con.execute(
+                """INSERT INTO app_settings(key,value,is_secret,updated_at) VALUES(?,?,?,?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value,is_secret=excluded.is_secret,updated_at=excluded.updated_at""",
+                (key, stored, int(is_secret), _now()),
+            )
+        else:
+            con.execute(
+                """INSERT INTO user_settings(user_id,key,value,is_secret,updated_at) VALUES(?,?,?,?,?)
+                   ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value,is_secret=excluded.is_secret,
+                   updated_at=excluded.updated_at""",
+                (user_id, key, stored, int(is_secret), _now()),
+            )
 
 
-def get_setting(key: str, default: str = "", reveal_secret: bool = True) -> str:
+def get_setting(key: str, default: str = "", reveal_secret: bool = True, user_id: int | None = None) -> str:
     with connection() as con:
-        row = con.execute("SELECT value,is_secret FROM app_settings WHERE key=?", (key,)).fetchone()
+        if user_id is None:
+            row = con.execute("SELECT value,is_secret FROM app_settings WHERE key=?", (key,)).fetchone()
+        else:
+            row = con.execute(
+                "SELECT value,is_secret FROM user_settings WHERE user_id=? AND key=?", (user_id, key)
+            ).fetchone()
     if not row:
         return default
     value = row["value"] or ""
@@ -335,10 +401,20 @@ def get_setting(key: str, default: str = "", reveal_secret: bool = True) -> str:
     return value
 
 
-def get_all_settings(mask_secrets: bool = True) -> dict[str, str]:
+def get_all_settings(mask_secrets: bool = True, user_id: int | None = None) -> dict[str, str]:
     with connection() as con:
-        rows = con.execute("SELECT key,value,is_secret FROM app_settings ORDER BY key").fetchall()
-    result = {}
+        if user_id is None:
+            rows = con.execute("SELECT key,value,is_secret FROM app_settings ORDER BY key").fetchall()
+        else:
+            rows = con.execute(
+                "SELECT key,value,is_secret FROM user_settings WHERE user_id=? ORDER BY key", (user_id,)
+            ).fetchall()
+    result = dict(DEFAULT_SETTINGS) if user_id is not None else {}
+    if user_id is not None:
+        # Never expose administrator/environment notification identities as a
+        # new user's defaults. Each account configures its own delivery data.
+        for key in ("smtp_host", "smtp_username", "email_from", "email_to", "telegram_chat_id"):
+            result[key] = ""
     for row in rows:
         if row["is_secret"]:
             result[row["key"]] = (
@@ -581,38 +657,53 @@ VALID_DECISIONS = {"unreviewed", "apply", "maybe", "skip"}
 VALID_APPLICATION_STATUSES = {"to_apply", "applied", "interview", "rejected", "offer"}
 
 
-def set_job_decision(job_key: str, decision: str) -> dict[str, Any]:
+def set_job_decision(job_key: str, decision: str, user_id: int | None = None) -> dict[str, Any]:
     if decision not in VALID_DECISIONS:
         raise ValueError("Invalid decision")
     now = _now()
+    owner = _owner_key(user_id)
     with connection() as con:
         job = con.execute("SELECT job_key FROM jobs WHERE job_key=?", (job_key,)).fetchone()
         if not job:
             raise ValueError("Job not found")
-        con.execute("UPDATE jobs SET decision=?, decision_at=? WHERE job_key=?", (decision, now, job_key))
-        app = con.execute("SELECT status FROM applications WHERE job_key=?", (job_key,)).fetchone()
+        con.execute(
+            """INSERT INTO user_job_state(owner_key,user_id,job_key,decision,decision_at) VALUES(?,?,?,?,?)
+               ON CONFLICT(owner_key,job_key) DO UPDATE SET decision=excluded.decision,decision_at=excluded.decision_at""",
+            (owner, user_id, job_key, decision, now),
+        )
+        if user_id is None:
+            con.execute("UPDATE jobs SET decision=?, decision_at=? WHERE job_key=?", (decision, now, job_key))
+        app = con.execute(
+            "SELECT status FROM applications WHERE owner_key=? AND job_key=?", (owner, job_key)
+        ).fetchone()
         if decision == "apply" and not app:
             con.execute(
-                "INSERT INTO applications(job_key,status,applied_at,notes,created_at,updated_at) VALUES(?, 'to_apply', NULL, '', ?, ?)",
-                (job_key, now, now),
+                """INSERT INTO applications(owner_key,user_id,job_key,status,applied_at,notes,created_at,updated_at)
+                   VALUES(?,?,?,'to_apply',NULL,'',?,?)""",
+                (owner, user_id, job_key, now, now),
             )
         elif decision != "apply" and app and app["status"] == "to_apply":
             # If it was only queued and never actually applied, remove it from the tracker.
-            con.execute("DELETE FROM applications WHERE job_key=?", (job_key,))
+            con.execute("DELETE FROM applications WHERE owner_key=? AND job_key=?", (owner, job_key))
     return {"job_key": job_key, "decision": decision, "decision_at": now}
 
 
 def save_application(
-    job_key: str, status: str, notes: str | None = None, applied_at: str | None = None
+    job_key: str,
+    status: str,
+    notes: str | None = None,
+    applied_at: str | None = None,
+    user_id: int | None = None,
 ) -> dict[str, Any]:
     if status not in VALID_APPLICATION_STATUSES:
         raise ValueError("Invalid application status")
     now = _now()
+    owner = _owner_key(user_id)
     with connection() as con:
         job = con.execute("SELECT job_key FROM jobs WHERE job_key=?", (job_key,)).fetchone()
         if not job:
             raise ValueError("Job not found")
-        current = con.execute("SELECT * FROM applications WHERE job_key=?", (job_key,)).fetchone()
+        current = con.execute("SELECT * FROM applications WHERE owner_key=? AND job_key=?", (owner, job_key)).fetchone()
         current_notes = current["notes"] if current else ""
         current_applied_at = current["applied_at"] if current else None
         final_notes = current_notes if notes is None else notes
@@ -622,15 +713,22 @@ def save_application(
             final_applied_at = now
         if current:
             con.execute(
-                "UPDATE applications SET status=?, applied_at=?, notes=?, updated_at=? WHERE job_key=?",
-                (status, final_applied_at, final_notes, now, job_key),
+                "UPDATE applications SET status=?, applied_at=?, notes=?, updated_at=? WHERE owner_key=? AND job_key=?",
+                (status, final_applied_at, final_notes, now, owner, job_key),
             )
         else:
             con.execute(
-                "INSERT INTO applications(job_key,status,applied_at,notes,created_at,updated_at) VALUES(?,?,?,?,?,?)",
-                (job_key, status, final_applied_at, final_notes, now, now),
+                """INSERT INTO applications(owner_key,user_id,job_key,status,applied_at,notes,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (owner, user_id, job_key, status, final_applied_at, final_notes, now, now),
             )
-        con.execute("UPDATE jobs SET decision='apply', decision_at=? WHERE job_key=?", (now, job_key))
+        con.execute(
+            """INSERT INTO user_job_state(owner_key,user_id,job_key,decision,decision_at) VALUES(?,?,?,'apply',?)
+               ON CONFLICT(owner_key,job_key) DO UPDATE SET decision='apply',decision_at=excluded.decision_at""",
+            (owner, user_id, job_key, now),
+        )
+        if user_id is None:
+            con.execute("UPDATE jobs SET decision='apply', decision_at=? WHERE job_key=?", (now, job_key))
     return {
         "job_key": job_key,
         "status": status,
@@ -640,18 +738,20 @@ def save_application(
     }
 
 
-def list_applications(status: str | None = None, limit: int = 300) -> list[dict[str, Any]]:
-    where = ""
-    params: list[Any] = []
+def list_applications(status: str | None = None, limit: int = 300, user_id: int | None = None) -> list[dict[str, Any]]:
+    where = "WHERE a.owner_key=?"
+    params: list[Any] = [_owner_key(user_id)]
     if status in VALID_APPLICATION_STATUSES:
-        where = "WHERE a.status=?"
+        where += " AND a.status=?"
         params.append(status)
     params.append(limit)
     with connection() as con:
         rows = con.execute(
             f"""SELECT a.job_key, a.status, a.applied_at, a.notes, a.created_at, a.updated_at,
-                       j.title, j.company, j.location, j.url, j.source, j.score, j.decision
+                       j.title, j.company, j.location, j.url, j.source, j.score,
+                       COALESCE(s.decision,'unreviewed') AS decision
                 FROM applications a JOIN jobs j ON j.job_key=a.job_key
+                LEFT JOIN user_job_state s ON s.owner_key=a.owner_key AND s.job_key=a.job_key
                 {where}
                 ORDER BY CASE a.status
                     WHEN 'interview' THEN 1 WHEN 'offer' THEN 2 WHEN 'to_apply' THEN 3
@@ -662,9 +762,12 @@ def list_applications(status: str | None = None, limit: int = 300) -> list[dict[
     return [dict(row) for row in rows]
 
 
-def application_stats() -> dict[str, int]:
+def application_stats(user_id: int | None = None) -> dict[str, int]:
     with connection() as con:
-        rows = con.execute("SELECT status, COUNT(*) AS n FROM applications GROUP BY status").fetchall()
+        rows = con.execute(
+            "SELECT status, COUNT(*) AS n FROM applications WHERE owner_key=? GROUP BY status",
+            (_owner_key(user_id),),
+        ).fetchall()
     result = {status: 0 for status in VALID_APPLICATION_STATUSES}
     for row in rows:
         result[row["status"]] = row["n"]

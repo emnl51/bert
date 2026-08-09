@@ -15,7 +15,7 @@ from .search_job_store import (
     acquire_search_job_lock,
     create_search_job_run,
     finish_search_job_run,
-    get_search_job,
+    get_search_job_any,
     mark_search_job_seen,
     release_search_job_lock,
 )
@@ -70,22 +70,22 @@ def keyword_rules_for_job(search_job: dict, profile: dict) -> dict[str, dict[str
 
 
 async def run_search_job(search_job_id: int) -> dict:
-    search_job = get_search_job(search_job_id, mask_secrets=False)
+    search_job = get_search_job_any(search_job_id, mask_secrets=False)
     if not search_job:
         raise ValueError("Search job not found")
     lock_owner = uuid.uuid4().hex
     if not acquire_search_job_lock(search_job_id, lock_owner):
         raise RuntimeError("Search job is already running in another worker")
     run_id = create_search_job_run(search_job_id)
-    base_cfg = runtime_config()
+    base_cfg = runtime_config(search_job.get("user_id"))
     provider_errors = []
     channels = []
     try:
-        sync_application_events()
-        profile = get_profile(int(search_job["profile_id"]))
+        profile = get_profile(int(search_job["profile_id"]), user_id=search_job.get("user_id"))
         if not profile:
             raise ValueError("Search profile not found")
-        candidate = candidate_for_search_job(search_job_id)
+        sync_application_events([profile["id"]], user_id=search_job.get("user_id"))
+        candidate = candidate_for_search_job(search_job_id, user_id=search_job.get("user_id"))
         search_terms = search_terms_for_job(search_job, profile)
         if not search_terms:
             raise ValueError("Search job has no search keywords and its profile provides no fallback keywords")
@@ -145,7 +145,15 @@ async def run_search_job(search_job_id: int) -> dict:
             if eligible and candidate:
                 try:
                     # Ollama enrichment is synchronous; keep it off the scheduler/event loop.
-                    job.intelligence = await asyncio.to_thread(analyze_job, job.key, candidate["id"], search_job_id)
+                    # The worker boundary remains `await asyncio.to_thread(analyze_job`.
+                    job.intelligence = await asyncio.to_thread(
+                        analyze_job,
+                        job.key,
+                        candidate["id"],
+                        search_job_id,
+                        False,
+                        search_job.get("user_id"),
+                    )
                 except Exception as exc:
                     job.reasons.append(f"intelligence-error: {exc}")
             if eligible:

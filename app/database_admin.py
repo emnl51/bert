@@ -40,6 +40,7 @@ RESET_SCOPES = {
             "job_language",
             "search_job_seen",
             "applications",
+            "user_job_state",
             "jobs",
         ],
     },
