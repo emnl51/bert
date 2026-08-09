@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+docker-compose.server.yml
 
 # Python
 __pycache__/

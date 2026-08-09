@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 from starlette.requests import Request
@@ -9,6 +9,13 @@ from . import v15_main as v15
 from .config import settings
 from .db import list_sources, save_source
 from .security import require_admin
+from .update_client import (
+    UpdateAgentError,
+    check_for_updates,
+    require_same_origin_update,
+    start_update,
+    update_status,
+)
 from .version import VERSION
 
 app = v15.app
@@ -44,6 +51,7 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
         '<script src="/source-analytics-ui.js"></script>'
         '<script src="/database-ui.js"></script>'
         '<script src="/log-ui.js"></script>'
+        '<script src="/update-ui.js"></script>'
         '<script src="/ui-shell.js"></script>'
     )
     return HTMLResponse(html.replace("</body>", scripts + "</body>"))
@@ -106,6 +114,41 @@ def ui_shell(_: str = Depends(require_admin)):
     return Response(Path("app/ui-shell.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
+@app.get("/update-ui.js")
+def update_ui(_: str = Depends(require_admin)):
+    return Response(Path("app/update-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
+
+
+class ApplyUpdatePayload(BaseModel):
+    confirmation: str = Field(max_length=40)
+
+
+def _update_response(action):
+    try:
+        return action()
+    except UpdateAgentError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/update/status")
+def api_update_status(_: str = Depends(require_admin)):
+    return _update_response(update_status)
+
+
+@app.post("/api/update/check")
+def api_check_for_updates(request: Request, _: str = Depends(require_admin)):
+    require_same_origin_update(request)
+    return _update_response(check_for_updates)
+
+
+@app.post("/api/update/apply", status_code=202)
+def api_apply_update(payload: ApplyUpdatePayload, request: Request, _: str = Depends(require_admin)):
+    require_same_origin_update(request)
+    if payload.confirmation != "APPLY UPDATE":
+        raise HTTPException(status_code=400, detail="Update confirmation is invalid")
+    return _update_response(start_update)
+
+
 _FAVICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <rect width="64" height="64" rx="14" fill="#2563eb"/><path d="M17 18h30v8H36v24h-9V26H17z" fill="white"/>
 </svg>"""
@@ -143,4 +186,5 @@ def v16_health(_: str = Depends(require_admin)):
         "evidence_based_cv_match": True,
         "ollama_context_weight": 30,
         "intelligence_cache": True,
+        "web_update_management": True,
     }

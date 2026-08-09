@@ -1,0 +1,28 @@
+[Unit]
+Description=JobTrack fixed-purpose update agent
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+SupplementaryGroups=docker
+WorkingDirectory=/home/ubuntu/jobtrack
+EnvironmentFile=/etc/jobtrack-updater.env
+ExecStart=/usr/bin/python3 /home/ubuntu/jobtrack/scripts/jobtrack_updater.py
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=jobtrack-updater
+RuntimeDirectoryMode=0755
+StateDirectory=jobtrack-updater
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/jobtrack /var/lib/jobtrack-updater /run/jobtrack-updater
+
+[Install]
+WantedBy=multi-user.target
