@@ -52,7 +52,7 @@ from .profile_store import (
 from .providers import test_source
 from .runtime import runtime_config
 from .source_catalog import SOURCE_CATALOG
-from .security import require_admin
+from .security import CSRFMiddleware, require_admin
 from .service import run_search
 
 scheduler = AsyncIOScheduler(timezone=settings.timezone)
@@ -100,6 +100,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, version="9.0.0", lifespan=lifespan)
+app.add_middleware(CSRFMiddleware)
 
 
 class AppSettingsPayload(BaseModel):
