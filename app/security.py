@@ -1,3 +1,7 @@
+import base64
+import binascii
+import hashlib
+import hmac
 import secrets
 import time
 from collections import defaultdict
@@ -12,7 +16,8 @@ from starlette.responses import JSONResponse
 
 from .config import settings
 
-security = HTTPBasic()
+security = HTTPBasic(auto_error=False)
+SESSION_COOKIE = "bert_session"
 
 # In-memory rate limiter for failed authentication attempts. Tracks per client
 # IP and temporarily blocks after too many failures. Resets on successful auth.
@@ -68,9 +73,52 @@ def _remaining_block_seconds(ip: str) -> float:
         return remaining
 
 
-def require_admin(request: Request, credentials: HTTPBasicCredentials = Depends(security)) -> str:
-    ip = _client_ip(request)
+def _session_signature(value: str) -> str:
+    return hmac.new(settings.app_secret_key.encode(), value.encode(), hashlib.sha256).hexdigest()
 
+
+def create_admin_session() -> str:
+    expires_at = int(time.time()) + settings.session_lifetime_seconds
+    value = f"admin|{settings.admin_username}|{expires_at}|{secrets.token_urlsafe(16)}"
+    token = f"{value}|{_session_signature(value)}"
+    return base64.urlsafe_b64encode(token.encode()).decode().rstrip("=")
+
+
+def read_admin_session(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        role, username, expires_at, nonce, signature = base64.urlsafe_b64decode(padded).decode().split("|", 4)
+        value = f"{role}|{username}|{expires_at}|{nonce}"
+        expired = int(expires_at) < int(time.time())
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return None
+    if role != "admin" or username != settings.admin_username:
+        return None
+    if expired:
+        return None
+    if not secrets.compare_digest(signature, _session_signature(value)):
+        return None
+    return username
+
+
+def authenticate_admin(request: Request, username: str, password: str) -> bool:
+    ip = _client_ip(request)
+    require_login_attempt_allowed(request)
+
+    ok_user = secrets.compare_digest(username, settings.admin_username)
+    ok_password = secrets.compare_digest(password, settings.admin_password)
+    if not (ok_user and ok_password):
+        _record_auth_failure(ip)
+        return False
+
+    _record_auth_success(ip)
+    return True
+
+
+def require_login_attempt_allowed(request: Request) -> None:
+    ip = _client_ip(request)
     if _is_rate_blocked(ip):
         retry_after = int(_remaining_block_seconds(ip))
         raise HTTPException(
@@ -79,27 +127,56 @@ def require_admin(request: Request, credentials: HTTPBasicCredentials = Depends(
             headers={"Retry-After": str(retry_after)},
         )
 
-    ok_user = secrets.compare_digest(credentials.username, settings.admin_username)
-    ok_password = secrets.compare_digest(credentials.password, settings.admin_password)
-    if not (ok_user and ok_password):
-        _record_auth_failure(ip)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
 
-    _record_auth_success(ip)
-    return credentials.username
+def record_login_failure(request: Request) -> None:
+    _record_auth_failure(_client_ip(request))
+
+
+def record_login_success(request: Request) -> None:
+    _record_auth_success(_client_ip(request))
+
+
+def current_admin(request: Request) -> str | None:
+    return read_admin_session(request.cookies.get(SESSION_COOKIE))
+
+
+def current_user(request: Request) -> dict | None:
+    if current_admin(request):
+        return None
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return None
+    from .user_store import read_user_session
+
+    return read_user_session(token)
+
+
+def require_user(request: Request) -> dict:
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    return user
+
+
+def require_admin(request: Request, credentials: HTTPBasicCredentials | None = Depends(security)) -> str:
+    session_user = current_admin(request)
+    if session_user:
+        return session_user
+
+    if credentials and authenticate_admin(request, credentials.username, credentials.password):
+        return credentials.username
+
+    if credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
 
 def require_same_origin(request: Request) -> None:
     """Reject cross-site state-changing requests.
 
-    Basic Auth credentials are attached by browsers automatically. Requiring
-    a same-origin fetch prevents a third-party page from turning an authenticated
-    browser into a mutation trigger. Non-browser clients (curl, etc.) without
-    Sec-Fetch-Site/Origin headers are allowed through — Basic Auth protects them.
+    Session cookies and Basic Auth credentials can be attached automatically.
+    Requiring a same-origin fetch prevents a third-party page from turning an
+    authenticated browser into a mutation trigger.
     """
     fetch_site = request.headers.get("sec-fetch-site", "")
     if fetch_site and fetch_site not in {"same-origin", "none"}:
@@ -117,7 +194,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
     Checks Sec-Fetch-Site and Origin headers on POST/PUT/DELETE/PATCH requests.
     Same-origin browser fetches pass; cross-site form submissions are blocked.
-    Non-browser clients without these headers are allowed (Basic Auth is their gate).
+    Non-browser clients without these headers are allowed; authentication is
+    still enforced by each protected route.
     """
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}

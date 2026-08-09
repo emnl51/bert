@@ -36,6 +36,22 @@ def test_v16_owns_current_public_health_route():
     assert "hybrid_cv_intelligence" in text
     assert "evidence_based_cv_match" in text
     assert "intelligence_cache" in text
+    assert "web_database_backup_restore" in text
+
+
+def test_database_backup_restore_api_and_ui_are_wired():
+    main = Path("app/v16_main.py").read_text(encoding="utf-8")
+    ui = Path("app/database-ui.js").read_text(encoding="utf-8")
+    assert '@app.post("/api/database/backup")' in main
+    assert '@app.post("/api/database/restore")' in main
+    assert "require_same_origin(request)" in main
+    assert 'request.headers.get("x-bert-confirmation") != "RESTORE DATABASE"' in main
+    assert "create_download_backup" in main
+    assert "restore_database" in main
+    assert "Download backup" in ui
+    assert "Restore from backup" in ui
+    assert "X-Bert-Action" in ui
+    assert "RESTORE DATABASE" in ui
 
 
 def test_stepstone_ui_is_loaded_after_source_ui():

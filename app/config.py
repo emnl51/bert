@@ -8,9 +8,23 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8080
     database_path: str = "/data/jobs.db"
+    database_restore_max_bytes: int = 268_435_456
     app_secret_key: str = "change-this-secret-key"
     admin_username: str = "admin"
     admin_password: str = "change-me"
+    session_lifetime_seconds: int = 43_200
+    session_cookie_secure: bool = True
+    registration_lifetime_hours: int = 24
+    public_base_url: str = ""
+
+    # System mail is reserved for account activation and security messages.
+    # It is intentionally separate from each user's job notification settings.
+    system_smtp_host: str = ""
+    system_smtp_port: int = 587
+    system_smtp_username: str = ""
+    system_smtp_password: str = ""
+    system_smtp_use_tls: bool = True
+    system_email_from: str = ""
 
     # Optional host-side updater. The updater owns Docker/Git privileges; the
     # web container can only reach its narrow API through a Unix socket.

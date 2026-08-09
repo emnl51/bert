@@ -1,6 +1,14 @@
 (() => {
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
+  let restoreLimit = 256 * 1024 * 1024;
+
+  function formatBytes(value){
+    const bytes=Number(value)||0;
+    if(bytes<1024) return `${bytes} B`;
+    if(bytes<1024*1024) return `${(bytes/1024).toFixed(1)} KB`;
+    return `${(bytes/(1024*1024)).toFixed(1)} MB`;
+  }
 
   function install(){
     const nav=document.querySelector('.nav'); const main=document.querySelector('.main');
@@ -11,6 +19,11 @@
     const section=document.createElement('section'); section.id='database'; section.className='section'; section.innerHTML=`
       <div class="warning"><b>Destructive actions.</b> Every reset can permanently remove data. Backups are enabled by default, and Factory Reset always creates one.</div>
       <div class="grid" id="dbMetrics"></div>
+      <div class="section-title"><div><h2>Backup & recovery</h2><div class="hint">Download a consistent copy of all Bert data or replace the current database with a previously downloaded backup.</div></div></div>
+      <div class="two">
+        <div class="card"><h3 style="margin-top:0">Download backup</h3><p class="muted">Creates a consistent SQLite snapshot containing jobs, applications, profiles, settings and encrypted credentials.</p><button id="downloadDbBackupBtn" class="btn primary" type="button" onclick="downloadDatabaseBackup()">Download backup</button><div class="hint" style="margin-top:10px">Keep your <span class="mono">APP_SECRET_KEY</span> unchanged if you restore encrypted credentials on another installation.</div></div>
+        <div class="card" style="border-color:#f5c2c0"><h3 style="margin-top:0;color:#b42318">Restore from backup</h3><p class="muted">Validates the uploaded database, creates a safety backup of current data and atomically replaces it. Invalid backups leave current data unchanged.</p><div class="field"><label for="dbRestoreFile">SQLite backup file</label><input id="dbRestoreFile" type="file" accept=".db,.sqlite,.sqlite3,application/vnd.sqlite3,application/x-sqlite3"><div id="dbRestoreFileStatus" class="hint">Select a Bert backup file.</div></div><button id="restoreDbBackupBtn" class="btn danger" type="button" style="margin-top:12px" onclick="restoreDatabaseBackup()">Restore backup</button></div>
+      </div>
       <div class="section-title"><div><h2>Reset options</h2><div class="hint">Configuration such as sources, API settings, profiles and schedules is preserved unless you choose Factory Reset.</div></div></div>
       <div class="two">
         <div class="card"><h3>Jobs & Applications</h3><p class="muted">Deletes stored jobs, decisions, application tracker records and job-linked analysis/feedback.</p><button class="btn danger" onclick="resetDb('jobs')">Reset jobs</button></div>
@@ -22,16 +35,64 @@
       </div>
       <div class="card" style="margin-top:16px"><h3 style="margin-top:0">Database details</h3><div id="dbDetails" class="mono muted">Loading…</div></div>`;
     main.appendChild(section);
+    $('dbRestoreFile').addEventListener('change',()=>{
+      const file=$('dbRestoreFile').files?.[0];
+      $('dbRestoreFileStatus').textContent=file?`${file.name} · ${formatBytes(file.size)} · limit ${formatBytes(restoreLimit)}`:'Select a Bert backup file.';
+    });
   }
 
   window.loadDatabaseStatus=async function(){
     try{
       const d=await api('/api/database/status'); const c=d.counts||{};
+      restoreLimit=Number(d.max_restore_bytes)||restoreLimit;
       const sum=names=>names.reduce((n,k)=>n+(Number(c[k])||0),0);
       if($('dbMetrics')) $('dbMetrics').innerHTML=`<div class="card"><div class="muted">Jobs</div><div class="metric">${Number(c.jobs||0)}</div></div><div class="card"><div class="muted">Applications</div><div class="metric">${Number(c.applications||0)}</div></div><div class="card"><div class="muted">Runs</div><div class="metric">${sum(['search_runs','search_job_runs'])}</div></div><div class="card"><div class="muted">DB tables</div><div class="metric">${Number(d.tables||0)}</div></div>`;
       if($('dbDetails')) $('dbDetails').innerHTML=`Path: ${esc(d.database_path)}<br>${Object.entries(c).sort().map(([k,v])=>`${esc(k)}: ${v}`).join('<br>')}`;
       return d;
     }catch(e){toast(e.message,true);throw e}
+  };
+
+  async function responseError(response){
+    const text=await response.text();
+    try{return JSON.parse(text).detail||text||response.statusText}catch(_){return text||response.statusText}
+  }
+
+  window.downloadDatabaseBackup=async function(){
+    const button=$('downloadDbBackupBtn');
+    button.disabled=true; button.textContent='Preparing…';
+    try{
+      const response=await fetch('/api/database/backup',{method:'POST',headers:{'X-Bert-Action':'backup'}});
+      if(!response.ok) throw new Error(await responseError(response));
+      const blob=await response.blob();
+      const disposition=response.headers.get('content-disposition')||'';
+      const match=disposition.match(/filename="?([^";]+)"?/i);
+      const filename=match?.[1]||'bert-data-backup.db';
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement('a'); link.href=url; link.download=filename; document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      toast(`Backup downloaded: ${filename}`);
+    }catch(e){toast(e.message,true)}finally{button.disabled=false;button.textContent='Download backup'}
+  };
+
+  window.restoreDatabaseBackup=async function(){
+    const input=$('dbRestoreFile'); const file=input.files?.[0];
+    if(!file){toast('Select a Bert backup file first.',true);return}
+    if(file.size>restoreLimit){toast(`Backup exceeds the ${formatBytes(restoreLimit)} limit.`,true);return}
+    if(!confirm('Restore this backup? Current Bert data will be replaced. A safety backup will be created automatically.')) return;
+    const typed=prompt('Type exactly:\nRESTORE DATABASE','');
+    if(typed!=='RESTORE DATABASE'){toast('Restore cancelled: confirmation text did not match.',true);return}
+    const button=$('restoreDbBackupBtn'); button.disabled=true; button.textContent='Validating and restoring…';
+    try{
+      const result=await api('/api/database/restore',{
+        method:'POST',
+        headers:{'Content-Type':'application/vnd.sqlite3','X-Bert-Action':'restore','X-Bert-Confirmation':'RESTORE DATABASE'},
+        body:file
+      });
+      if(!result.verified) throw new Error('Restore returned without verification.');
+      input.value=''; $('dbRestoreFileStatus').textContent='Restore completed and verified.';
+      await refreshAfterReset('factory');
+      toast(`Restore completed. Safety backup: ${result.safety_backup_path}`);
+    }catch(e){toast(e.message,true)}finally{button.disabled=false;button.textContent='Restore backup'}
   };
 
   function clearStaleOperationalViews(scope){
