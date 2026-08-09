@@ -185,6 +185,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _secure_database_file() -> None:
+    """Restrict SQLite file permissions to owner-only (0600).
+
+    The Docker container runs as the jobtrack user, but host-side volume mounts
+    can expose more permissive defaults. This narrows permissions on every init
+    so the database and its WAL/SHM sidecars are not world-readable.
+    """
+    path = settings.database_path
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    for suffix in ("-wal", "-shm"):
+        sidecar = f"{path}{suffix}"
+        try:
+            os.chmod(sidecar, 0o600)
+        except OSError:
+            pass
+
+
 def init_db() -> None:
     folder = os.path.dirname(settings.database_path)
     if folder:
