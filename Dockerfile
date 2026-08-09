@@ -7,12 +7,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
-RUN addgroup --system jobtrack \
-    && adduser --system --ingroup jobtrack --home /app jobtrack \
+RUN addgroup --system bert \
+    && adduser --system --ingroup bert --home /app bert \
     && mkdir -p /data \
-    && chown -R jobtrack:jobtrack /app /data
+    && chown -R bert:bert /app /data
 
-USER jobtrack
+USER bert
 
 EXPOSE 8080
 CMD ["uvicorn", "app.application:app", "--host", "0.0.0.0", "--port", "8080"]

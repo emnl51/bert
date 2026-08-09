@@ -1,7 +1,7 @@
 services:
-  tracker:
+  bert:
     build: .
-    container_name: jobtrack
+    container_name: bert
     restart: unless-stopped
     env_file:
       - .env
@@ -10,7 +10,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - tracker_data:/data
+      - bert_data:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
       interval: 30s
@@ -18,4 +18,4 @@ services:
       retries: 3
 
 volumes:
-  tracker_data:
+  bert_data:

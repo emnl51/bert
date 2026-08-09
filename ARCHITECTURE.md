@@ -1,4 +1,4 @@
-# JobTrack architecture
+# Bert architecture
 
 The stable ASGI entrypoint is app.application:app. Release numbers are held
 centrally in app/version.py; deployments must not point directly at a

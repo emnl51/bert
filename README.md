@@ -1,8 +1,8 @@
-# JobTrack - Bert
+# Bert
 
 Self-hosted job discovery, filtering, ranking, scheduled search, application tracking and CV/job intelligence for configurable target locations.
 
-JobTrack combines structured job APIs and ATS feeds with optional experimental job-board providers, profile-specific ranking, language and employment-format filtering, preference learning, notifications, evidence-based CV matching and a responsive admin UI.
+Bert combines structured job APIs and ATS feeds with optional experimental job-board providers, profile-specific ranking, language and employment-format filtering, preference learning, notifications, analytics and a responsive admin UI.
 
 ## Highlights
 
@@ -30,20 +30,20 @@ JobTrack combines structured job APIs and ATS feeds with optional experimental j
 
 ### Search Profiles
 
-A Search Profile defines target location, search phrases, title/skill/format boosts, negative rules, minimum Job/Language fit, preferred German/English job-ad languages, employment-format expectations and learned preference rules.
+A Search Profile defines target location, search phrases, title/skill/format boosts, negative rules, minimum Job/Language fit, preferred German/English job-ad languages, employment-format expectations, and optional Candidate Profile assignment for intelligent filtering.
 
 Fresh installations seed:
 
 - **Werkstudent / Part-time** — strict student / part-time / Minijob matching
 - **Full-time Supply Chain** — full-time Supply Chain / Operations / Procurement roles
 
-For the strict part-time profile, a vacancy must contain a positive employment-format signal such as `Werkstudent`, `Working Student`, `Teilzeit`, `Part-time`, `Minijob` or compatible hours-per-week text. Explicit full-time roles and jobs with an unconfirmed work format are rejected before being stored.
+For the strict part-time profile, a vacancy must contain a positive employment-format signal such as `Werkstudent`, `Working Student`, `Teilzeit`, `Part-time`, `Minijob` or compatible hours-per-week signals to pass the employment-format gate.
 
 ### Search Jobs
 
-A Search Job is an independent automation built on a Search Profile. The profile supplies base location, search, scoring and filtering values. The Job editor can keep those inherited values or replace them only for that job. Profile selection, search phrases, allowlist, blacklist, sources, score thresholds, notifications, Candidate Profile and schedule are managed on one page.
+A Search Job is an independent automation built on a Search Profile. The profile supplies base location, search, scoring and filtering values. The Job editor can keep those inherited values or replace them with job-specific overrides.
 
-Allowlist matches add positive Job Fit points but never force a vacancy into the results. Blacklist matches are hard exclusions: the vacancy is skipped before scoring, profile storage and notification.
+Allowlist matches add positive Job Fit points but never force a vacancy into the results. Blacklist matches are hard exclusions: the vacancy is skipped before scoring, profile storage and notifications.
 
 When a Candidate Profile is assigned, eligible jobs can automatically receive CV Match intelligence and are sorted using CV Match before normal fit scores.
 
@@ -103,7 +103,7 @@ Recommendation / notification
 
 Candidate Profiles store CV text, structured skills, languages and target roles. CV text is encrypted at rest using `APP_SECRET_KEY`.
 
-JobTrack v16.4 uses a hybrid CV Match engine:
+Bert v16.4 uses a hybrid CV Match engine:
 
 ```text
 Final CV Match
@@ -137,11 +137,11 @@ and a supporting CV evidence excerpt. A missing requirement stays missing even w
 
 Ollama is disabled by default. With Ollama disabled, CV text is not sent to any LLM.
 
-When enabled, JobTrack sends the Candidate Profile, job text and deterministic evidence table to the configured Ollama endpoint. Job description text is explicitly treated as untrusted data; instructions contained inside a job ad are not treated as model instructions.
+When enabled, Bert sends the Candidate Profile, job text and deterministic evidence table to the configured Ollama endpoint. Job description text is explicitly treated as untrusted data; instructions, tool calls and secrets are filtered before sending.
 
 AI output can add contextual notes and transferable-experience explanations only when they reference an existing deterministic evidence ID. It cannot create a new matched requirement.
 
-If Ollama fails or times out, JobTrack automatically falls back to the deterministic evidence score.
+If Ollama fails or times out, Bert automatically falls back to the deterministic evidence score.
 
 The Intelligence screen shows:
 
@@ -169,7 +169,7 @@ Default endpoint:
 http://host.docker.internal:11434
 ```
 
-Both Docker Compose files map `host.docker.internal` to the Linux host gateway, so a host-installed Ollama instance can be reached from the JobTrack container.
+Both Docker Compose files map `host.docker.internal` to the Linux host gateway, so a host-installed Ollama instance can be reached from the Bert container.
 
 Recommended starting configuration:
 
@@ -220,8 +220,8 @@ Requirements:
 - port `8080` available, or adjust the mapping
 
 ```bash
-git clone https://github.com/emnl51/jobtrack.git
-cd jobtrack
+git clone https://github.com/whojan/bert.git
+cd bert
 cp .env.example .env
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
@@ -267,17 +267,17 @@ Test before enabling if desired. Once enabled, StepStone can be selected by indi
 Published releases are pushed to:
 
 ```text
-ghcr.io/emnl51/jobtrack
+ghcr.io/whojan/bert
 ```
 
 Run a tagged image:
 
 ```bash
-git clone https://github.com/emnl51/jobtrack.git
-cd jobtrack
+git clone https://github.com/whojan/bert.git
+cd bert
 cp .env.example .env
-JOBTRACK_IMAGE_TAG=v16.5.0 docker compose -f docker-compose.ghcr.yml pull
-JOBTRACK_IMAGE_TAG=v16.5.0 docker compose -f docker-compose.ghcr.yml up -d
+BERT_IMAGE_TAG=v16.5.0 docker compose -f docker-compose.ghcr.yml pull
+BERT_IMAGE_TAG=v16.5.0 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 Or follow `latest`:
@@ -287,14 +287,14 @@ docker compose -f docker-compose.ghcr.yml pull
 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
-The GHCR deployment uses the same `.env`, persistent `tracker_data` volume and Ollama host-gateway mapping.
+The GHCR deployment uses the same `.env`, persistent `bert_data` volume and Ollama host-gateway mapping.
 
 ## Updating an existing installation
 
 Keep the existing `.env`, Docker `/data` volume and especially `APP_SECRET_KEY`.
 
 ```bash
-cd ~/jobtrack
+cd ~/bert
 git pull origin main
 docker compose up -d --build
 ```
@@ -305,7 +305,7 @@ Verify:
 
 ```bash
 docker compose ps
-docker compose exec tracker python -c "import app.v16_main; print(app.v16_main.app.version)"
+docker compose exec bert python -c "import app.v16_main; print(app.v16_main.app.version)"
 ```
 
 Expected current main version:
@@ -318,7 +318,7 @@ Expected current main version:
 
 The optional **Updates** screen compares the installed Git commit with the configured remote branch, shows deployment progress and recent updater logs, and can apply a safe fast-forward update.
 
-Docker and Git privileges remain in a fixed-purpose host service; the web container never receives the Docker socket. The host agent creates a SQLite backup, rebuilds only the tracker service and verifies `/health`. See [`deploy/README.md`](deploy/README.md) for the one-time installation and server Compose overlay.
+Docker and Git privileges remain in a fixed-purpose host service; the web container never receives the Docker socket. The host agent creates a SQLite backup, rebuilds only the bert service and verifies the `/health` endpoint.
 
 ## Development and CI
 
@@ -327,7 +327,7 @@ Python 3.12 is used by Docker and CI.
 ```bash
 python -m pytest -q
 # or
-docker compose exec tracker python -m pytest -q
+docker compose exec bert python -m pytest -q
 ```
 
 GitHub Actions checks:
@@ -359,8 +359,8 @@ app.v16_main:app
 - AI cannot promote unsupported requirements to matched evidence.
 - JobSpy and StepStone are experimental; use conservative limits and timeouts.
 - Do not expose the admin panel directly to the public internet without HTTPS and appropriate network controls.
-- JobTrack now refuses to start while `ADMIN_PASSWORD` or `APP_SECRET_KEY` still uses a published placeholder value.
-- For an internet-facing deployment, place the app behind an HTTPS reverse proxy. `Caddyfile.example` includes TLS, security headers and a rate-limit policy (the rate-limit directive requires a compatible Caddy build/plugin).
+- Bert now refuses to start while `ADMIN_PASSWORD` or `APP_SECRET_KEY` still uses a published placeholder value.
+- For an internet-facing deployment, place the app behind an HTTPS reverse proxy. `Caddyfile.example` includes TLS, security headers and a rate-limit policy (the rate-limit directive requires a custom Caddy build).
 
 ## License
 

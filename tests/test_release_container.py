@@ -14,8 +14,8 @@ def test_release_workflow_tests_before_ghcr_publish():
 
 def test_ghcr_compose_uses_release_image_persistent_data_and_ollama_host():
     text = Path("docker-compose.ghcr.yml").read_text(encoding="utf-8")
-    assert "ghcr.io/emnl51/jobtrack:${JOBTRACK_IMAGE_TAG:-latest}" in text
-    assert "tracker_data:/data" in text
+    assert "ghcr.io/whojan/bert:${BERT_IMAGE_TAG:-latest}" in text
+    assert "bert_data:/data" in text
     assert "env_file:" in text
     assert ".env" in text
     assert "host.docker.internal:host-gateway" in text
