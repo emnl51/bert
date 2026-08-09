@@ -15,9 +15,13 @@ def request_with_headers(**headers: str) -> Request:
         (name.replace("_", "-").encode(), value.encode())
         for name, value in headers.items()
     ]
-    return Request(
-        {"type": "http", "method": "POST", "path": "/api/update/apply", "headers": raw_headers}
-    )
+    request_dict = {
+        "type": "http",
+        "method": "POST",
+        "path": "/api/update/apply",
+        "headers": raw_headers,
+    }
+    return Request(request_dict)
 
 
 def git(path: Path, *args: str) -> str:
