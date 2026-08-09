@@ -1,7 +1,10 @@
 from app import db
 from app.profile_store import ensure_profile_schema, list_profiles
 from app.search_job_store import (
+    create_search_job_run,
     ensure_search_job_schema,
+    finish_search_job_run,
+    list_search_job_runs,
     list_search_jobs,
     mark_search_job_seen,
     save_search_job,
@@ -122,6 +125,26 @@ def test_job_filter_overrides_are_nullable_normalized_and_isolated(tmp_path, mon
     assert jobs[custom_id]["allowlist_terms"] == ["automotive", "iatf 16949"]
     assert jobs[custom_id]["blocklist_terms"] == ["software developer"]
     assert jobs[custom_id]["allowlist_boost"] == 18
+    assert jobs[custom_id]["min_cv_match"] == 58
+
+
+def test_cv_match_threshold_is_saved_per_search_job(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    profile = list_profiles()[0]
+    search_id = save_search_job({"name": "Evidence gated", "profile_id": profile["id"], "min_cv_match": 72})
+    saved = next(job for job in list_search_jobs() if job["id"] == search_id)
+    assert saved["min_cv_match"] == 72
+
+
+def test_run_history_preserves_filter_reason_counts(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    profile = list_profiles()[0]
+    search_id = save_search_job({"name": "Measured search", "profile_id": profile["id"]})
+    run_id = create_search_job_run(search_id)
+    counts = {"blocklist": 2, "employment": 1, "fit": 4, "language": 3, "cv_match": 5}
+    finish_search_job_run(run_id, search_id, "success", fetched=20, matches=5, filter_counts=counts)
+    run = list_search_job_runs(search_id)[0]
+    assert run["filter_counts"] == counts
 
 
 def test_job_filter_rules_inherit_or_replace_profile_values():
