@@ -1,4 +1,4 @@
-# JobTrack - Bert
+# Bert
 
 Self-hosted job discovery, filtering, ranking, scheduled search, application tracking and CV/job intelligence for configurable target locations.
 
