@@ -52,7 +52,7 @@ from .profile_store import (
 from .providers import test_source
 from .runtime import runtime_config
 from .source_catalog import SOURCE_CATALOG
-from .security import CSRFMiddleware, require_admin
+from .security import CSRFMiddleware, require_admin, require_workspace
 from .service import run_search
 
 scheduler = AsyncIOScheduler(timezone=settings.timezone)
@@ -217,7 +217,7 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
 
 
 @app.get("/language-ui.js")
-def language_ui(_: str = Depends(require_admin)):
+def language_ui(_: dict = Depends(require_workspace)):
     return Response(Path("app/language-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
@@ -227,49 +227,73 @@ def source_ui(_: str = Depends(require_admin)):
 
 
 @app.get("/review-ui.js")
-def review_ui(_: str = Depends(require_admin)):
+def review_ui(_: dict = Depends(require_workspace)):
     return Response(Path("app/review-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
 @app.get("/profile-ui.js")
-def profile_ui(_: str = Depends(require_admin)):
+def profile_ui(_: dict = Depends(require_workspace)):
     return Response(Path("app/profile-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
 @app.get("/api/overview")
-def overview(_: str = Depends(require_admin)):
-    job = scheduler.get_job(JOB_ID)
-    runs = list_runs(limit=1)
-    default = get_profile()
+def overview(actor: dict = Depends(require_workspace)):
+    user_id = actor["user_id"]
+    default = get_profile(user_id=user_id)
+    if user_id is None:
+        stats = {**dashboard_stats(), **feedback_stats(default["id"] if default else None)}
+        job = scheduler.get_job(JOB_ID)
+        runs = list_runs(limit=1)
+        next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+        last_run = runs[0] if runs else None
+    else:
+        jobs = list_jobs_for_profile(default["id"], limit=10_000, decision=None, user_id=user_id) if default else []
+        apps = application_stats(user_id=user_id)
+        stats = {
+            "jobs": len(jobs),
+            "reviewed": sum(1 for item in jobs if item["decision"] != "unreviewed"),
+            "to_apply": apps["to_apply"],
+            "interviews": apps["interview"],
+            "offers": apps["offer"],
+            "enabled_sources": len([source for source in list_sources() if source["enabled"]]),
+            **feedback_stats(default["id"] if default else None),
+        }
+        next_run = None
+        last_run = None
     return {
-        "stats": {**dashboard_stats(), **feedback_stats(default["id"] if default else None)},
+        "stats": stats,
         "default_profile": default,
-        "next_run": job.next_run_time.isoformat() if job and job.next_run_time else None,
-        "last_run": runs[0] if runs else None,
+        "next_run": next_run,
+        "last_run": last_run,
         "security": {
-            "default_admin_password": settings.admin_password == "change-me",
-            "default_secret_key": settings.app_secret_key == "change-this-secret-key",
+            "default_admin_password": user_id is None and settings.admin_password == "change-me",
+            "default_secret_key": user_id is None and settings.app_secret_key == "change-this-secret-key",
         },
     }
 
 
 @app.get("/api/settings")
-def api_settings(_: str = Depends(require_admin)):
-    return get_all_settings(mask_secrets=True)
+def api_settings(actor: dict = Depends(require_workspace)):
+    return get_all_settings(mask_secrets=True, user_id=actor["user_id"])
 
 
 @app.put("/api/settings")
-def update_settings(payload: AppSettingsPayload, _: str = Depends(require_admin)):
+def update_settings(payload: AppSettingsPayload, actor: dict = Depends(require_workspace)):
     if payload.schedule_frequency not in ("disabled", "interval", "daily", "weekly"):
         raise HTTPException(400, "Invalid schedule frequency")
     for key, value in payload.model_dump().items():
-        set_setting(key, str(value).lower() if isinstance(value, bool) else str(value))
-    reschedule()
+        set_setting(
+            key,
+            str(value).lower() if isinstance(value, bool) else str(value),
+            user_id=actor["user_id"],
+        )
+    if actor["user_id"] is None:
+        reschedule()
     return {"ok": True}
 
 
 @app.put("/api/notifications")
-def update_notifications(payload: NotificationPayload, _: str = Depends(require_admin)):
+def update_notifications(payload: NotificationPayload, actor: dict = Depends(require_workspace)):
     data = payload.model_dump()
     for key in (
         "telegram_chat_id",
@@ -280,55 +304,61 @@ def update_notifications(payload: NotificationPayload, _: str = Depends(require_
         "email_from",
         "email_to",
     ):
-        set_setting(key, str(data[key]).lower() if isinstance(data[key], bool) else str(data[key]))
+        set_setting(
+            key,
+            str(data[key]).lower() if isinstance(data[key], bool) else str(data[key]),
+            user_id=actor["user_id"],
+        )
     if payload.telegram_bot_token:
-        set_setting("telegram_bot_token", payload.telegram_bot_token, is_secret=True)
+        set_setting("telegram_bot_token", payload.telegram_bot_token, is_secret=True, user_id=actor["user_id"])
     if payload.smtp_password:
-        set_setting("smtp_password", payload.smtp_password, is_secret=True)
+        set_setting("smtp_password", payload.smtp_password, is_secret=True, user_id=actor["user_id"])
     return {"ok": True}
 
 
 @app.post("/api/notifications/test-telegram")
-async def api_test_telegram(_: str = Depends(require_admin)):
-    await test_telegram(runtime_config())
+async def api_test_telegram(actor: dict = Depends(require_workspace)):
+    await test_telegram(runtime_config(actor["user_id"]))
     return {"ok": True}
 
 
 @app.post("/api/notifications/test-email")
-def api_test_email(_: str = Depends(require_admin)):
-    if not test_email(runtime_config()):
+def api_test_email(actor: dict = Depends(require_workspace)):
+    if not test_email(runtime_config(actor["user_id"])):
         raise HTTPException(400, "Email settings are incomplete")
     return {"ok": True}
 
 
 @app.get("/api/profiles")
-def api_profiles(_: str = Depends(require_admin)):
-    return {"profiles": list_profiles()}
+def api_profiles(actor: dict = Depends(require_workspace)):
+    return {"profiles": list_profiles(user_id=actor["user_id"])}
 
 
 @app.post("/api/profiles")
-def create_profile(payload: ProfilePayload, _: str = Depends(require_admin)):
+def create_profile(payload: ProfilePayload, actor: dict = Depends(require_workspace)):
     try:
-        return {"ok": True, "id": save_profile(payload.model_dump())}
+        return {"ok": True, "id": save_profile(payload.model_dump(), user_id=actor["user_id"])}
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
 @app.put("/api/profiles/{profile_id}")
-def update_profile(profile_id: int, payload: ProfilePayload, _: str = Depends(require_admin)):
-    if not get_profile(profile_id):
+def update_profile(profile_id: int, payload: ProfilePayload, actor: dict = Depends(require_workspace)):
+    if not get_profile(profile_id, user_id=actor["user_id"]):
         raise HTTPException(404, "Profile not found")
     try:
-        save_profile(payload.model_dump(), profile_id)
+        save_profile(payload.model_dump(), profile_id, user_id=actor["user_id"])
         return {"ok": True}
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
 @app.delete("/api/profiles/{profile_id}")
-def remove_profile(profile_id: int, _: str = Depends(require_admin)):
+def remove_profile(profile_id: int, actor: dict = Depends(require_workspace)):
+    if not get_profile(profile_id, user_id=actor["user_id"]):
+        raise HTTPException(404, "Profile not found")
     try:
-        delete_profile(profile_id)
+        delete_profile(profile_id, user_id=actor["user_id"])
         return {"ok": True}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -423,7 +453,7 @@ def api_jobs(
     language: str = Query("preferred"),
     content_language: str = Query("profile"),
     profile_id: int | None = Query(None),
-    _: str = Depends(require_admin),
+    actor: dict = Depends(require_workspace),
 ):
     if decision not in ("all", "active", "unreviewed", "apply", "maybe", "skip"):
         raise HTTPException(400, "Invalid decision filter")
@@ -431,21 +461,27 @@ def api_jobs(
         raise HTTPException(400, "Invalid language filter")
     if content_language not in ("all", "profile", "de", "en", "mixed", "unknown"):
         raise HTTPException(400, "Invalid content language filter")
-    profile = get_profile(profile_id)
+    profile = get_profile(profile_id, user_id=actor["user_id"])
     if not profile:
         raise HTTPException(404, "Profile not found")
     return {
         "profile": profile,
         "jobs": list_jobs_for_profile(
-            profile["id"], limit, min_score, None if decision == "all" else decision, language, content_language
+            profile["id"],
+            limit,
+            min_score,
+            None if decision == "all" else decision,
+            language,
+            content_language,
+            user_id=actor["user_id"],
         ),
     }
 
 
 @app.put("/api/jobs/{job_key:path}/decision")
-def update_job_decision(job_key: str, payload: JobDecisionPayload, _: str = Depends(require_admin)):
+def update_job_decision(job_key: str, payload: JobDecisionPayload, actor: dict = Depends(require_workspace)):
     try:
-        return {"ok": True, **set_job_decision(job_key, payload.decision)}
+        return {"ok": True, **set_job_decision(job_key, payload.decision, user_id=actor["user_id"])}
     except ValueError as exc:
         raise HTTPException(400 if str(exc) == "Invalid decision" else 404, str(exc)) from exc
 
@@ -459,12 +495,18 @@ def update_job_content_language(job_key: str, payload: JobContentLanguagePayload
 
 
 @app.post("/api/jobs/{job_key:path}/feedback")
-def add_job_feedback(job_key: str, payload: FeedbackPayload, _: str = Depends(require_admin)):
+def add_job_feedback(job_key: str, payload: FeedbackPayload, actor: dict = Depends(require_workspace)):
     try:
         return {
             "ok": True,
             **record_feedback(
-                job_key, payload.suitability, payload.reason, payload.note, payload.learn, payload.profile_id
+                job_key,
+                payload.suitability,
+                payload.reason,
+                payload.note,
+                payload.learn,
+                payload.profile_id,
+                user_id=actor["user_id"],
             ),
         }
     except ValueError as exc:
@@ -472,8 +514,8 @@ def add_job_feedback(job_key: str, payload: FeedbackPayload, _: str = Depends(re
 
 
 @app.get("/api/learning")
-def learning(profile_id: int | None = Query(None), _: str = Depends(require_admin)):
-    profile = get_profile(profile_id)
+def learning(profile_id: int | None = Query(None), actor: dict = Depends(require_workspace)):
+    profile = get_profile(profile_id, user_id=actor["user_id"])
     if not profile:
         raise HTTPException(404, "Profile not found")
     return {
@@ -485,36 +527,46 @@ def learning(profile_id: int | None = Query(None), _: str = Depends(require_admi
 
 
 @app.put("/api/learning/rules/{rule_id}")
-def toggle_learning_rule(rule_id: int, payload: RuleTogglePayload, _: str = Depends(require_admin)):
-    set_rule_enabled(rule_id, payload.enabled)
+def toggle_learning_rule(rule_id: int, payload: RuleTogglePayload, actor: dict = Depends(require_workspace)):
+    set_rule_enabled(rule_id, payload.enabled, user_id=actor["user_id"])
     return {"ok": True}
 
 
 @app.delete("/api/learning/rules/{rule_id}")
-def remove_learning_rule(rule_id: int, _: str = Depends(require_admin)):
-    delete_rule(rule_id)
+def remove_learning_rule(rule_id: int, actor: dict = Depends(require_workspace)):
+    delete_rule(rule_id, user_id=actor["user_id"])
     return {"ok": True}
 
 
 @app.get("/api/applications")
 def api_applications(
-    status: str = Query("all"), limit: int = Query(300, ge=1, le=1000), _: str = Depends(require_admin)
+    status: str = Query("all"),
+    limit: int = Query(300, ge=1, le=1000),
+    actor: dict = Depends(require_workspace),
 ):
     valid = ("all", "to_apply", "applied", "interview", "rejected", "offer")
     if status not in valid:
         raise HTTPException(400, "Invalid application status filter")
     return {
-        "applications": enrich_applications(list_applications(None if status == "all" else status, limit=limit)),
-        "stats": application_stats(),
+        "applications": enrich_applications(
+            list_applications(None if status == "all" else status, limit=limit, user_id=actor["user_id"])
+        ),
+        "stats": application_stats(user_id=actor["user_id"]),
     }
 
 
 @app.put("/api/applications/{job_key:path}")
-def update_application(job_key: str, payload: ApplicationPayload, _: str = Depends(require_admin)):
+def update_application(job_key: str, payload: ApplicationPayload, actor: dict = Depends(require_workspace)):
     try:
         return {
             "ok": True,
-            **save_application(job_key, payload.status, notes=payload.notes, applied_at=payload.applied_at),
+            **save_application(
+                job_key,
+                payload.status,
+                notes=payload.notes,
+                applied_at=payload.applied_at,
+                user_id=actor["user_id"],
+            ),
         }
     except ValueError as exc:
         raise HTTPException(400 if str(exc) == "Invalid application status" else 404, str(exc)) from exc

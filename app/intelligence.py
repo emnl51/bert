@@ -9,6 +9,13 @@ import httpx
 from .candidate_store import get_candidate
 from .db import connection, get_setting
 
+
+def _tenant_setting(key: str, default: str, user_id=None) -> str:
+    if user_id is None:
+        return get_setting(key, default)
+    return get_setting(key, default, user_id=user_id)
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS job_intelligence (
  job_key TEXT NOT NULL,
@@ -496,12 +503,20 @@ def _safe_ai_context(data: dict, baseline: dict) -> dict:
     return {"context_notes": notes, "transferable": transferable}
 
 
-def _ollama(candidate: dict, job: dict, baseline: dict) -> dict | None:
-    if get_setting("intelligence_ollama_enabled", "false").lower() not in ("1", "true", "yes", "on"):
+def _ollama(candidate: dict, job: dict, baseline: dict, user_id=None) -> dict | None:
+    if _tenant_setting("intelligence_ollama_enabled", "false", user_id).lower() not in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
         return None
-    url = get_setting("intelligence_ollama_url", "http://host.docker.internal:11434").rstrip("/")
-    model = get_setting("intelligence_ollama_model", "gemma3").strip() or "gemma3"
-    timeout = max(10, min(int(get_setting("intelligence_ollama_timeout_seconds", "60") or 60), 120))
+    url = _tenant_setting("intelligence_ollama_url", "http://host.docker.internal:11434", user_id).rstrip("/")
+    model = _tenant_setting("intelligence_ollama_model", "gemma3", user_id).strip() or "gemma3"
+    timeout = max(
+        10,
+        min(int(_tenant_setting("intelligence_ollama_timeout_seconds", "60", user_id) or 60), 120),
+    )
     compact_evidence = [
         {"id": e["requirement_id"], "term": e["term"], "status": e["status"], "evidence": e["evidence"][:350]}
         for e in baseline["evidence"]
@@ -555,7 +570,7 @@ DESCRIPTION: {job.get("description", "")[:16000]}
         return None
 
 
-def _cache_key(candidate: dict, job: dict) -> str:
+def _cache_key(candidate: dict, job: dict, user_id=None) -> str:
     payload = {
         "candidate": {
             "headline": candidate.get("headline", ""),
@@ -572,9 +587,9 @@ def _cache_key(candidate: dict, job: dict) -> str:
         },
         "engine": "hybrid-v2",
         "ollama": {
-            "enabled": get_setting("intelligence_ollama_enabled", "false"),
-            "url": get_setting("intelligence_ollama_url", ""),
-            "model": get_setting("intelligence_ollama_model", "gemma3"),
+            "enabled": _tenant_setting("intelligence_ollama_enabled", "false", user_id),
+            "url": _tenant_setting("intelligence_ollama_url", "", user_id),
+            "model": _tenant_setting("intelligence_ollama_model", "gemma3", user_id),
         },
     }
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
@@ -599,21 +614,25 @@ def _decode_row(row) -> dict:
 
 
 def analyze_job(
-    job_key: str, candidate_profile_id: int, search_job_id: int | None = None, force: bool = False
+    job_key: str,
+    candidate_profile_id: int,
+    search_job_id: int | None = None,
+    force: bool = False,
+    user_id=None,
 ) -> dict[str, Any]:
     ensure_intelligence_schema()
-    candidate = get_candidate(candidate_profile_id)
+    candidate = get_candidate(candidate_profile_id, user_id=user_id)
     job = _job(job_key)
     if not candidate or not job:
         raise ValueError("Candidate profile or job not found")
-    cache_key = _cache_key(candidate, job)
+    cache_key = _cache_key(candidate, job, user_id=user_id)
     if not force:
-        cached = get_analysis(job_key, candidate_profile_id)
+        cached = get_analysis(job_key, candidate_profile_id, user_id=user_id)
         if cached and cached.get("cache_key") == cache_key:
             cached["cached"] = True
             return cached
     baseline = _deterministic(candidate, job)
-    ai = _ollama(candidate, job, baseline)
+    ai = _ollama(candidate, job, baseline, user_id=user_id)
     result = dict(baseline)
     if ai:
         ai_score = ai["score"]
@@ -668,26 +687,31 @@ def analyze_job(
     }
 
 
-def get_analysis(job_key: str, candidate_profile_id: int):
+def get_analysis(job_key: str, candidate_profile_id: int, user_id=None):
     ensure_intelligence_schema()
     with connection() as con:
         row = con.execute(
-            "SELECT * FROM job_intelligence WHERE job_key=? AND candidate_profile_id=?", (job_key, candidate_profile_id)
+            """SELECT i.* FROM job_intelligence i JOIN candidate_profiles c ON c.id=i.candidate_profile_id
+               WHERE i.job_key=? AND i.candidate_profile_id=? AND c.user_id IS ?""",
+            (job_key, candidate_profile_id, user_id),
         ).fetchone()
     return _decode_row(row) if row else None
 
 
-def list_analyses(candidate_profile_id: int | None = None, limit: int = 300):
+def list_analyses(candidate_profile_id: int | None = None, limit: int = 300, user_id=None):
     ensure_intelligence_schema()
-    params: list[Any] = []
-    where = ""
+    params: list[Any] = [user_id]
+    where = "WHERE c.user_id IS ?"
     if candidate_profile_id:
-        where = "WHERE i.candidate_profile_id=?"
+        where += " AND i.candidate_profile_id=?"
         params.append(candidate_profile_id)
     params.append(limit)
     with connection() as con:
         rows = con.execute(
-            f"""SELECT i.*,j.title,j.company,j.location,j.url FROM job_intelligence i JOIN jobs j ON j.job_key=i.job_key {where} ORDER BY i.cv_match DESC,i.analyzed_at DESC LIMIT ?""",
+            f"""SELECT i.*,j.title,j.company,j.location,j.url FROM job_intelligence i
+                JOIN candidate_profiles c ON c.id=i.candidate_profile_id
+                JOIN jobs j ON j.job_key=i.job_key {where}
+                ORDER BY i.cv_match DESC,i.analyzed_at DESC LIMIT ?""",
             params,
         ).fetchall()
     return [_decode_row(row) for row in rows]

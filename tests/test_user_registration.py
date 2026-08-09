@@ -59,7 +59,11 @@ def test_public_registration_activation_and_user_session(tmp_path, monkeypatch):
     assert activated.json()["redirect"] == "/account"
     assert client.get("/account").status_code == 200
     assert "New User" in client.get("/account").text
-    assert client.get("/app").status_code == 401
+    workspace = client.get("/app")
+    assert workspace.status_code == 200
+    assert '"isAdmin": false' in workspace.text
+    assert '<script src="/users-ui.js"></script>' not in workspace.text
+    assert '<script src="/database-ui.js"></script>' not in workspace.text
     assert registration_for_token(sent["token"]) is None
 
 

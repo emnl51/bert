@@ -4,7 +4,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from ..config import settings
 from ..search_job_service import run_search_job
-from ..search_job_store import ensure_search_job_schema, list_search_jobs
+from ..search_job_store import ensure_search_job_schema, list_all_search_jobs
 
 search_scheduler = AsyncIOScheduler(timezone=settings.timezone)
 
@@ -35,7 +35,7 @@ def build_search_job_trigger(search_job: dict):
 def reschedule_search_jobs() -> None:
     ensure_search_job_schema()
     search_scheduler.remove_all_jobs()
-    for search_job in list_search_jobs(mask_secrets=False):
+    for search_job in list_all_search_jobs(mask_secrets=False):
         if not search_job["enabled"]:
             continue
         trigger = build_search_job_trigger(search_job)

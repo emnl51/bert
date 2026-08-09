@@ -242,11 +242,14 @@ def _origin_profiles(job_key):
     return [default["id"]] if default else [1]
 
 
-def sync_application_events(profile_ids=None):
+def sync_application_events(profile_ids=None, user_id=None):
     ensure_positive_schema()
+    owner = "admin" if user_id is None else f"user:{int(user_id)}"
     with connection() as con:
         rows = con.execute(
-            "SELECT job_key,status FROM applications WHERE status IN ('applied','interview','offer')"
+            """SELECT job_key,status FROM applications
+               WHERE owner_key=? AND status IN ('applied','interview','offer')""",
+            (owner,),
         ).fetchall()
     milestones = {
         "applied": ("applied",),
@@ -278,14 +281,22 @@ def list_positive_rules(profile_id=None):
     return [{**dict(r), "enabled": bool(r["enabled"])} for r in rows]
 
 
-def set_positive_rule_enabled(rule_id, enabled):
+def set_positive_rule_enabled(rule_id, enabled, user_id=None):
     with connection() as con:
-        con.execute("UPDATE positive_rules SET enabled=?,updated_at=? WHERE id=?", (int(enabled), _now(), rule_id))
+        con.execute(
+            """UPDATE positive_rules SET enabled=?,updated_at=? WHERE id=? AND profile_id IN
+               (SELECT id FROM search_profiles WHERE user_id IS ?)""",
+            (int(enabled), _now(), rule_id, user_id),
+        )
 
 
-def delete_positive_rule(rule_id):
+def delete_positive_rule(rule_id, user_id=None):
     with connection() as con:
-        con.execute("DELETE FROM positive_rules WHERE id=?", (rule_id,))
+        con.execute(
+            """DELETE FROM positive_rules WHERE id=? AND profile_id IN
+               (SELECT id FROM search_profiles WHERE user_id IS ?)""",
+            (rule_id, user_id),
+        )
 
 
 def apply_positive_boost(job, base_score, profile_id=1):

@@ -19,7 +19,7 @@ from .candidate_store import (
 )
 from .intelligence import analyze_job, ensure_intelligence_schema, get_analysis, list_analyses
 from .search_job_store import get_search_job
-from .security import require_admin
+from .security import require_admin, require_workspace
 from .config import settings
 from .db import get_setting, set_setting
 
@@ -75,72 +75,82 @@ class IntelligenceSettingsPayload(BaseModel):
 
 
 @app.get("/intelligence-ui.js")
-def intelligence_ui(_: str = Depends(require_admin)):
+def intelligence_ui(_: dict = Depends(require_workspace)):
     return Response(Path("app/intelligence-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
 @app.get("/intelligence-settings-ui.js")
-def intelligence_settings_ui(_: str = Depends(require_admin)):
+def intelligence_settings_ui(_: dict = Depends(require_workspace)):
     return Response(
         Path("app/intelligence-settings-ui.js").read_text(encoding="utf-8"), media_type="application/javascript"
     )
 
 
 @app.get("/api/candidates")
-def api_candidates(_: str = Depends(require_admin)):
-    return {"candidates": list_candidates(), "assignments": mapping_for_jobs()}
+def api_candidates(actor: dict = Depends(require_workspace)):
+    return {
+        "candidates": list_candidates(user_id=actor["user_id"]),
+        "assignments": mapping_for_jobs(user_id=actor["user_id"]),
+    }
 
 
 @app.post("/api/candidates")
-def create_candidate(payload: CandidatePayload, _: str = Depends(require_admin)):
+def create_candidate(payload: CandidatePayload, actor: dict = Depends(require_workspace)):
     try:
-        return {"ok": True, "id": save_candidate(payload.model_dump())}
+        return {"ok": True, "id": save_candidate(payload.model_dump(), user_id=actor["user_id"])}
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
 @app.put("/api/candidates/{candidate_id}")
-def update_candidate(candidate_id: int, payload: CandidatePayload, _: str = Depends(require_admin)):
-    if not get_candidate(candidate_id):
+def update_candidate(candidate_id: int, payload: CandidatePayload, actor: dict = Depends(require_workspace)):
+    if not get_candidate(candidate_id, user_id=actor["user_id"]):
         raise HTTPException(404, "Candidate profile not found")
     try:
-        save_candidate(payload.model_dump(), candidate_id)
+        save_candidate(payload.model_dump(), candidate_id, user_id=actor["user_id"])
         return {"ok": True}
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
 @app.delete("/api/candidates/{candidate_id}")
-def remove_candidate(candidate_id: int, _: str = Depends(require_admin)):
+def remove_candidate(candidate_id: int, actor: dict = Depends(require_workspace)):
+    if not get_candidate(candidate_id, user_id=actor["user_id"]):
+        raise HTTPException(404, "Candidate profile not found")
     try:
-        delete_candidate(candidate_id)
+        delete_candidate(candidate_id, user_id=actor["user_id"])
         return {"ok": True}
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
 @app.put("/api/search-jobs/{search_job_id}/candidate")
-def map_candidate(search_job_id: int, payload: CandidateAssignmentPayload, _: str = Depends(require_admin)):
-    if not get_search_job(search_job_id, True):
+def map_candidate(search_job_id: int, payload: CandidateAssignmentPayload, actor: dict = Depends(require_workspace)):
+    user_id = actor["user_id"]
+    if not get_search_job(search_job_id, True, user_id=user_id):
         raise HTTPException(404, "Search job not found")
-    if payload.candidate_profile_id and not get_candidate(payload.candidate_profile_id):
+    if payload.candidate_profile_id and not get_candidate(payload.candidate_profile_id, user_id=user_id):
         raise HTTPException(404, "Candidate profile not found")
-    assign_candidate(search_job_id, payload.candidate_profile_id, payload.enabled)
+    assign_candidate(search_job_id, payload.candidate_profile_id, payload.enabled, user_id=user_id)
     return {"ok": True}
 
 
 @app.get("/api/search-jobs/{search_job_id}/candidate")
-def get_search_job_candidate(search_job_id: int, _: str = Depends(require_admin)):
-    return {"candidate": candidate_for_search_job(search_job_id)}
+def get_search_job_candidate(search_job_id: int, actor: dict = Depends(require_workspace)):
+    if not get_search_job(search_job_id, True, user_id=actor["user_id"]):
+        raise HTTPException(404, "Search job not found")
+    return {"candidate": candidate_for_search_job(search_job_id, user_id=actor["user_id"])}
 
 
 @app.get("/api/intelligence/settings")
-def intelligence_settings(_: str = Depends(require_admin)):
+def intelligence_settings(actor: dict = Depends(require_workspace)):
+    user_id = actor["user_id"]
     return {
-        "ollama_enabled": get_setting("intelligence_ollama_enabled", "false").lower() in ("1", "true", "yes", "on"),
-        "ollama_url": get_setting("intelligence_ollama_url", "http://host.docker.internal:11434"),
-        "ollama_model": get_setting("intelligence_ollama_model", "gemma3"),
-        "ollama_timeout_seconds": int(get_setting("intelligence_ollama_timeout_seconds", "60") or 60),
+        "ollama_enabled": get_setting("intelligence_ollama_enabled", "false", user_id=user_id).lower()
+        in ("1", "true", "yes", "on"),
+        "ollama_url": get_setting("intelligence_ollama_url", "http://host.docker.internal:11434", user_id=user_id),
+        "ollama_model": get_setting("intelligence_ollama_model", "gemma3", user_id=user_id),
+        "ollama_timeout_seconds": int(get_setting("intelligence_ollama_timeout_seconds", "60", user_id=user_id) or 60),
         "deterministic_weight": 70,
         "ai_weight": 30,
         "engine": "hybrid-v2",
@@ -148,16 +158,17 @@ def intelligence_settings(_: str = Depends(require_admin)):
 
 
 @app.put("/api/intelligence/settings")
-def update_intelligence_settings(payload: IntelligenceSettingsPayload, _: str = Depends(require_admin)):
-    set_setting("intelligence_ollama_enabled", str(payload.ollama_enabled).lower())
-    set_setting("intelligence_ollama_url", payload.ollama_url.strip())
-    set_setting("intelligence_ollama_model", payload.ollama_model.strip())
-    set_setting("intelligence_ollama_timeout_seconds", str(payload.ollama_timeout_seconds))
+def update_intelligence_settings(payload: IntelligenceSettingsPayload, actor: dict = Depends(require_workspace)):
+    user_id = actor["user_id"]
+    set_setting("intelligence_ollama_enabled", str(payload.ollama_enabled).lower(), user_id=user_id)
+    set_setting("intelligence_ollama_url", payload.ollama_url.strip(), user_id=user_id)
+    set_setting("intelligence_ollama_model", payload.ollama_model.strip(), user_id=user_id)
+    set_setting("intelligence_ollama_timeout_seconds", str(payload.ollama_timeout_seconds), user_id=user_id)
     return {"ok": True}
 
 
 @app.post("/api/intelligence/analyze")
-def analyze(payload: dict[str, Any], _: str = Depends(require_admin)):
+def analyze(payload: dict[str, Any], actor: dict = Depends(require_workspace)):
     try:
         return {
             "ok": True,
@@ -166,6 +177,7 @@ def analyze(payload: dict[str, Any], _: str = Depends(require_admin)):
                 int(payload["candidate_profile_id"]),
                 payload.get("search_job_id"),
                 bool(payload.get("force", False)),
+                actor["user_id"],
             ),
         }
     except (KeyError, ValueError) as exc:
@@ -173,13 +185,13 @@ def analyze(payload: dict[str, Any], _: str = Depends(require_admin)):
 
 
 @app.get("/api/intelligence")
-def intelligence(candidate_profile_id: int | None = None, limit: int = 300, _: str = Depends(require_admin)):
-    return {"analyses": list_analyses(candidate_profile_id, limit)}
+def intelligence(candidate_profile_id: int | None = None, limit: int = 300, actor: dict = Depends(require_workspace)):
+    return {"analyses": list_analyses(candidate_profile_id, limit, user_id=actor["user_id"])}
 
 
 @app.get("/api/intelligence/{candidate_profile_id}/{job_key:path}")
-def intelligence_detail(candidate_profile_id: int, job_key: str, _: str = Depends(require_admin)):
-    data = get_analysis(job_key, candidate_profile_id)
+def intelligence_detail(candidate_profile_id: int, job_key: str, actor: dict = Depends(require_workspace)):
+    data = get_analysis(job_key, candidate_profile_id, user_id=actor["user_id"])
     if not data:
         raise HTTPException(404, "Analysis not found")
     return data

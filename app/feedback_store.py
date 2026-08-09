@@ -147,11 +147,16 @@ def _upsert_rule(con, profile_id, rule, reason):
     return int(cur.lastrowid)
 
 
-def record_feedback(job_key, suitability, reason="", note="", learn=True, profile_id=1):
+def record_feedback(job_key, suitability, reason="", note="", learn=True, profile_id=1, user_id=None):
     if suitability not in ("suitable", "maybe", "not_suitable"):
         raise ValueError("Invalid suitability")
     ensure_feedback_schema()
     with connection() as con:
+        profile = con.execute(
+            "SELECT id FROM search_profiles WHERE id=? AND user_id IS ?", (profile_id, user_id)
+        ).fetchone()
+        if not profile:
+            raise ValueError("Profile not found")
         row = con.execute("SELECT * FROM jobs WHERE job_key=?", (job_key,)).fetchone()
         if not row:
             raise ValueError("Job not found")
@@ -162,12 +167,21 @@ def record_feedback(job_key, suitability, reason="", note="", learn=True, profil
             "INSERT INTO job_feedback(job_key,profile_id,suitability,reason,note,generated_rules_json,created_at) VALUES(?,?,?,?,?,?,?)",
             (job_key, profile_id, suitability, reason, note or "", json.dumps(ids), now),
         )
-        legacy = {"suitable": "apply", "maybe": "maybe", "not_suitable": "skip"}[suitability]
-        con.execute("UPDATE jobs SET decision=?,decision_at=? WHERE job_key=?", (legacy, now, job_key))
+        decision = {"suitable": "apply", "maybe": "maybe", "not_suitable": "skip"}[suitability]
+        owner = "admin" if user_id is None else f"user:{int(user_id)}"
+        con.execute(
+            """INSERT INTO user_job_state(owner_key,user_id,job_key,decision,decision_at) VALUES(?,?,?,?,?)
+               ON CONFLICT(owner_key,job_key) DO UPDATE SET decision=excluded.decision,decision_at=excluded.decision_at""",
+            (owner, user_id, job_key, decision, now),
+        )
+        if user_id is None:
+            con.execute("UPDATE jobs SET decision=?,decision_at=? WHERE job_key=?", (decision, now, job_key))
         if suitability == "suitable":
             con.execute(
-                "INSERT INTO applications(job_key,status,created_at,updated_at) VALUES(?,'to_apply',?,?) ON CONFLICT(job_key) DO UPDATE SET updated_at=excluded.updated_at",
-                (job_key, now, now),
+                """INSERT INTO applications(owner_key,user_id,job_key,status,created_at,updated_at)
+                   VALUES(?,?,?,'to_apply',?,?) ON CONFLICT(owner_key,job_key)
+                   DO UPDATE SET updated_at=excluded.updated_at""",
+                (owner, user_id, job_key, now, now),
             )
     positive_ids = []
     if suitability == "suitable" and learn:
@@ -227,24 +241,32 @@ def list_learned_rules(profile_id=None):
     )
 
 
-def set_rule_enabled(rule_id, enabled):
+def set_rule_enabled(rule_id, enabled, user_id=None):
     if rule_id < 0:
         from .positive_learning import set_positive_rule_enabled
 
-        set_positive_rule_enabled(abs(rule_id), enabled)
+        set_positive_rule_enabled(abs(rule_id), enabled, user_id=user_id)
         return
     with connection() as con:
-        con.execute("UPDATE learned_rules SET enabled=?,updated_at=? WHERE id=?", (int(enabled), _now(), rule_id))
+        con.execute(
+            """UPDATE learned_rules SET enabled=?,updated_at=? WHERE id=? AND profile_id IN
+               (SELECT id FROM search_profiles WHERE user_id IS ?)""",
+            (int(enabled), _now(), rule_id, user_id),
+        )
 
 
-def delete_rule(rule_id):
+def delete_rule(rule_id, user_id=None):
     if rule_id < 0:
         from .positive_learning import delete_positive_rule
 
-        delete_positive_rule(abs(rule_id))
+        delete_positive_rule(abs(rule_id), user_id=user_id)
         return
     with connection() as con:
-        con.execute("DELETE FROM learned_rules WHERE id=?", (rule_id,))
+        con.execute(
+            """DELETE FROM learned_rules WHERE id=? AND profile_id IN
+               (SELECT id FROM search_profiles WHERE user_id IS ?)""",
+            (rule_id, user_id),
+        )
 
 
 def apply_learned_penalty(job, base_score, profile_id=1):

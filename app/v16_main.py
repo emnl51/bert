@@ -36,6 +36,7 @@ from .security import (
     require_login_attempt_allowed,
     require_same_origin,
     require_user,
+    require_workspace,
 )
 from . import system_mail
 from .system_mail import SystemMailError
@@ -245,41 +246,60 @@ def account_page(user: dict = Depends(require_user)):
         html.replace("{{ app_name }}", settings.app_name)
         .replace("{{ version }}", VERSION)
         .replace("{{ full_name }}", escape(user["full_name"]))
-        .replace("{{ email }}", escape(user["email"])),
+        .replace("{{ email }}", escape(user["email"]))
+        .replace("Your account is active.", "Your private workspace is ready.")
+        .replace(
+            "Your private workspace will open after the per-user data migration is completed. "
+            "Until then, administrator data remains isolated and unavailable.",
+            "Profiles, searches, applications and notification settings are isolated to your account. "
+            '<a href="/app">Open my workspace</a>',
+        ),
         headers={"Cache-Control": "no-store"},
     )
 
 
 @app.get("/app", response_class=HTMLResponse)
-def dashboard(request: Request, _: str = Depends(require_admin)):
+def dashboard(request: Request, actor: dict = Depends(require_workspace)):
+    is_admin = actor["kind"] == "admin"
     html = Path("app/templates/index.html").read_text(encoding="utf-8").replace("{{ app_name }}", settings.app_name)
     html = html.replace(
         "Supply Chain Tracker<small>Berlin / Brandenburg · v3</small>",
         f"{settings.app_name}<small>Smart Job Search · v{VERSION}</small>",
     )
+    shell_config_data = {"appName": settings.app_name, "version": VERSION}
+    shell_config_data["isAdmin"] = is_admin
     shell_config = json.dumps(
-        {"appName": settings.app_name, "version": VERSION},
+        shell_config_data,
         ensure_ascii=True,
     ).replace("<", "\\u003c")
-    scripts = (
+    business_scripts = (
         '<script src="/language-ui.js"></script>'
-        '<script src="/source-ui.js"></script>'
-        '<script src="/stepstone-ui.js"></script>'
         '<script src="/review-ui.js"></script>'
         '<script src="/legacy-compat-ui.js"></script>'
         '<script src="/profile-ui.js"></script>'
         '<script src="/search-job-ui.js"></script>'
         '<script src="/intelligence-ui.js"></script>'
         '<script src="/intelligence-settings-ui.js"></script>'
+    )
+    admin_scripts = (
+        '<script src="/source-ui.js"></script>'
+        '<script src="/stepstone-ui.js"></script>'
         '<script src="/jobspy-ui.js"></script>'
         '<script src="/source-analytics-ui.js"></script>'
         '<script src="/database-ui.js"></script>'
         '<script src="/log-ui.js"></script>'
         '<script src="/update-ui.js"></script>'
         '<script src="/users-ui.js"></script>'
-        f"<script>window.APP_SHELL={shell_config};</script>"
+    )
+    scripts = (
+        business_scripts + (admin_scripts if is_admin else "") + f"<script>window.APP_SHELL={shell_config};</script>"
         '<script src="/ui-shell.js"></script>'
     )
+    if not is_admin:
+        html = html.replace(
+            "refreshAll();",
+            "Promise.all([loadOverview(),loadJobs(),loadApplications(),loadSettings()]).catch(e=>toast(e.message,true));",
+        )
     return HTMLResponse(html.replace("</body>", scripts + "</body>"))
 
 
@@ -331,12 +351,12 @@ def configure_stepstone(payload: StepStonePayload, _: str = Depends(require_admi
 
 
 @app.get("/legacy-compat-ui.js")
-def legacy_compat_ui(_: str = Depends(require_admin)):
+def legacy_compat_ui(_: dict = Depends(require_workspace)):
     return Response(Path("app/legacy-compat-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
 @app.get("/ui-shell.js")
-def ui_shell(_: str = Depends(require_admin)):
+def ui_shell(_: dict = Depends(require_workspace)):
     return Response(Path("app/ui-shell.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 

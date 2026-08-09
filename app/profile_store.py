@@ -7,8 +7,9 @@ from .db import connection
 PROFILE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS search_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    slug TEXT NOT NULL UNIQUE,
+    user_id INTEGER,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
     is_default INTEGER NOT NULL DEFAULT 0,
     target_location TEXT NOT NULL DEFAULT 'Berlin',
@@ -24,7 +25,10 @@ CREATE TABLE IF NOT EXISTS search_profiles (
     content_languages_json TEXT NOT NULL DEFAULT '["de","en","mixed"]',
     keywords_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    UNIQUE(user_id, name),
+    UNIQUE(user_id, slug),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_search_profiles_enabled ON search_profiles(enabled);
 
@@ -183,10 +187,58 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def ensure_profile_schema() -> None:
+def _migrate_profile_ownership(con) -> None:
+    columns = {row[1] for row in con.execute("PRAGMA table_info(search_profiles)").fetchall()}
+    if not columns or "user_id" in columns:
+        return
+    con.execute("PRAGMA foreign_keys=OFF")
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        con.execute(
+            """CREATE TABLE search_profiles_v18 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,name TEXT NOT NULL,slug TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,is_default INTEGER NOT NULL DEFAULT 0,
+            target_location TEXT NOT NULL DEFAULT 'Berlin',location_terms_json TEXT NOT NULL DEFAULT '[]',
+            min_score INTEGER NOT NULL DEFAULT 35,min_language_score INTEGER NOT NULL DEFAULT 40,
+            language_weight INTEGER NOT NULL DEFAULT 35,current_german_level TEXT NOT NULL DEFAULT 'a2_b1',
+            max_german_requirement TEXT NOT NULL DEFAULT 'b1',show_b2_stretch INTEGER NOT NULL DEFAULT 1,
+            hide_german_heavy INTEGER NOT NULL DEFAULT 1,prefer_german_growth INTEGER NOT NULL DEFAULT 1,
+            content_languages_json TEXT NOT NULL DEFAULT '[\"de\",\"en\",\"mixed\"]',
+            keywords_json TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+            UNIQUE(user_id,name),UNIQUE(user_id,slug),
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)"""
+        )
+        con.execute(
+            """INSERT INTO search_profiles_v18
+            (id,user_id,name,slug,enabled,is_default,target_location,location_terms_json,min_score,
+             min_language_score,language_weight,current_german_level,max_german_requirement,
+             show_b2_stretch,hide_german_heavy,prefer_german_growth,content_languages_json,
+             keywords_json,created_at,updated_at)
+            SELECT id,NULL,name,slug,enabled,is_default,target_location,location_terms_json,min_score,
+             min_language_score,language_weight,current_german_level,max_german_requirement,
+             show_b2_stretch,hide_german_heavy,prefer_german_growth,
+             COALESCE(content_languages_json,'[\"de\",\"en\",\"mixed\"]'),keywords_json,created_at,updated_at
+            FROM search_profiles"""
+        )
+        con.execute("DROP TABLE search_profiles")
+        con.execute("ALTER TABLE search_profiles_v18 RENAME TO search_profiles")
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.execute("PRAGMA foreign_keys=ON")
+
+
+def ensure_profile_schema(user_id: int | None = None) -> None:
+    from .user_store import ensure_user_schema
+
+    ensure_user_schema()
     now = _now()
     with connection() as con:
         con.executescript(PROFILE_SCHEMA)
+        _migrate_profile_ownership(con)
+        con.execute("CREATE INDEX IF NOT EXISTS idx_search_profiles_enabled ON search_profiles(user_id,enabled)")
         columns = {row[1] for row in con.execute("PRAGMA table_info(search_profiles)").fetchall()}
         if "content_languages_json" not in columns:
             con.execute(
@@ -209,7 +261,7 @@ def ensure_profile_schema() -> None:
                     "UPDATE search_profiles SET keywords_json=?,updated_at=? WHERE id=?",
                     (json.dumps(keywords, ensure_ascii=False), now, row["id"]),
                 )
-        if con.execute("SELECT COUNT(*) FROM search_profiles").fetchone()[0] == 0:
+        if con.execute("SELECT COUNT(*) FROM search_profiles WHERE user_id IS ?", (user_id,)).fetchone()[0] == 0:
             common_locations = json.dumps(
                 [
                     "berlin",
@@ -225,9 +277,10 @@ def ensure_profile_schema() -> None:
                 ]
             )
             con.execute(
-                """INSERT INTO search_profiles(name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,keywords_json,created_at,updated_at)
-                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO search_profiles(user_id,name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,keywords_json,created_at,updated_at)
+                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
+                    user_id,
                     "Werkstudent / Part-time",
                     "werkstudent",
                     1,
@@ -248,9 +301,10 @@ def ensure_profile_schema() -> None:
                 ),
             )
             con.execute(
-                """INSERT INTO search_profiles(name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,keywords_json,created_at,updated_at)
-                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO search_profiles(user_id,name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,keywords_json,created_at,updated_at)
+                           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
+                    user_id,
                     "Full-time Supply Chain",
                     "fulltime",
                     1,
@@ -287,29 +341,34 @@ def _row_to_profile(row) -> dict[str, Any]:
     return p
 
 
-def list_profiles(enabled_only: bool = False) -> list[dict[str, Any]]:
-    ensure_profile_schema()
-    sql = "SELECT * FROM search_profiles"
+def list_profiles(enabled_only: bool = False, user_id: int | None = None) -> list[dict[str, Any]]:
+    ensure_profile_schema(user_id)
+    sql = "SELECT * FROM search_profiles WHERE user_id IS ?"
+    params: list[Any] = [user_id]
     if enabled_only:
-        sql += " WHERE enabled=1"
+        sql += " AND enabled=1"
     sql += " ORDER BY is_default DESC,id"
     with connection() as con:
-        rows = con.execute(sql).fetchall()
+        rows = con.execute(sql, params).fetchall()
     return [_row_to_profile(r) for r in rows]
 
 
-def get_profile(profile_id: int | None = None) -> dict[str, Any] | None:
-    ensure_profile_schema()
+def get_profile(profile_id: int | None = None, user_id: int | None = None) -> dict[str, Any] | None:
+    ensure_profile_schema(user_id)
     with connection() as con:
         if profile_id:
-            row = con.execute("SELECT * FROM search_profiles WHERE id=?", (profile_id,)).fetchone()
+            row = con.execute(
+                "SELECT * FROM search_profiles WHERE id=? AND user_id IS ?", (profile_id, user_id)
+            ).fetchone()
         else:
-            row = con.execute("SELECT * FROM search_profiles ORDER BY is_default DESC,id LIMIT 1").fetchone()
+            row = con.execute(
+                "SELECT * FROM search_profiles WHERE user_id IS ? ORDER BY is_default DESC,id LIMIT 1", (user_id,)
+            ).fetchone()
     return _row_to_profile(row) if row else None
 
 
-def save_profile(data: dict[str, Any], profile_id: int | None = None) -> int:
-    ensure_profile_schema()
+def save_profile(data: dict[str, Any], profile_id: int | None = None, user_id: int | None = None) -> int:
+    ensure_profile_schema(user_id)
     now = _now()
     fields = {
         "name": data.get("name", "Search Profile").strip(),
@@ -331,30 +390,34 @@ def save_profile(data: dict[str, Any], profile_id: int | None = None) -> int:
     }
     with connection() as con:
         if fields["is_default"]:
-            con.execute("UPDATE search_profiles SET is_default=0")
+            con.execute("UPDATE search_profiles SET is_default=0 WHERE user_id IS ?", (user_id,))
         if profile_id:
             con.execute(
-                """UPDATE search_profiles SET name=:name,slug=:slug,enabled=:enabled,is_default=:is_default,target_location=:target_location,location_terms_json=:location_terms_json,min_score=:min_score,min_language_score=:min_language_score,language_weight=:language_weight,current_german_level=:current_german_level,max_german_requirement=:max_german_requirement,show_b2_stretch=:show_b2_stretch,hide_german_heavy=:hide_german_heavy,prefer_german_growth=:prefer_german_growth,content_languages_json=:content_languages_json,keywords_json=:keywords_json,updated_at=:updated_at WHERE id=:id""",
-                {**fields, "updated_at": now, "id": profile_id},
+                """UPDATE search_profiles SET name=:name,slug=:slug,enabled=:enabled,is_default=:is_default,target_location=:target_location,location_terms_json=:location_terms_json,min_score=:min_score,min_language_score=:min_language_score,language_weight=:language_weight,current_german_level=:current_german_level,max_german_requirement=:max_german_requirement,show_b2_stretch=:show_b2_stretch,hide_german_heavy=:hide_german_heavy,prefer_german_growth=:prefer_german_growth,content_languages_json=:content_languages_json,keywords_json=:keywords_json,updated_at=:updated_at WHERE id=:id AND user_id IS :user_id""",
+                {**fields, "updated_at": now, "id": profile_id, "user_id": user_id},
             )
+            if con.execute("SELECT changes()").fetchone()[0] == 0:
+                raise ValueError("Profile not found")
             return profile_id
         cur = con.execute(
-            """INSERT INTO search_profiles(name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,content_languages_json,keywords_json,created_at,updated_at)
-                           VALUES(:name,:slug,:enabled,:is_default,:target_location,:location_terms_json,:min_score,:min_language_score,:language_weight,:current_german_level,:max_german_requirement,:show_b2_stretch,:hide_german_heavy,:prefer_german_growth,:content_languages_json,:keywords_json,:created_at,:updated_at)""",
-            {**fields, "created_at": now, "updated_at": now},
+            """INSERT INTO search_profiles(user_id,name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,content_languages_json,keywords_json,created_at,updated_at)
+                           VALUES(:user_id,:name,:slug,:enabled,:is_default,:target_location,:location_terms_json,:min_score,:min_language_score,:language_weight,:current_german_level,:max_german_requirement,:show_b2_stretch,:hide_german_heavy,:prefer_german_growth,:content_languages_json,:keywords_json,:created_at,:updated_at)""",
+            {**fields, "user_id": user_id, "created_at": now, "updated_at": now},
         )
         return int(cur.lastrowid)
 
 
-def delete_profile(profile_id: int) -> None:
-    ensure_profile_schema()
+def delete_profile(profile_id: int, user_id: int | None = None) -> None:
+    ensure_profile_schema(user_id)
     with connection() as con:
-        row = con.execute("SELECT is_default FROM search_profiles WHERE id=?", (profile_id,)).fetchone()
+        row = con.execute(
+            "SELECT is_default FROM search_profiles WHERE id=? AND user_id IS ?", (profile_id, user_id)
+        ).fetchone()
         if not row:
             return
         if row["is_default"]:
             raise ValueError("Default profile cannot be deleted")
-        con.execute("DELETE FROM search_profiles WHERE id=?", (profile_id,))
+        con.execute("DELETE FROM search_profiles WHERE id=? AND user_id IS ?", (profile_id, user_id))
 
 
 def upsert_profile_score(job, profile_id: int) -> None:
@@ -376,9 +439,9 @@ def upsert_profile_score(job, profile_id: int) -> None:
         )
 
 
-def profile_search_terms() -> list[str]:
+def profile_search_terms(user_id: int | None = None) -> list[str]:
     terms = []
-    for p in list_profiles(enabled_only=True):
+    for p in list_profiles(enabled_only=True, user_id=user_id):
         terms.extend((p.get("keywords") or {}).get("search", {}).keys())
     return list(dict.fromkeys(terms))
 
@@ -390,14 +453,19 @@ def list_jobs_for_profile(
     decision: str = "active",
     language: str = "preferred",
     content_language: str = "profile",
+    user_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    ensure_profile_schema()
+    ensure_profile_schema(user_id)
+    profile = get_profile(profile_id, user_id=user_id)
+    if not profile:
+        return []
+    owner_key = "admin" if user_id is None else f"user:{int(user_id)}"
     where = ["s.profile_id=?", "s.overall_score>=?"]
     params: list[Any] = [profile_id, min_score]
     if decision == "active":
-        where.append("j.decision!='skip'")
+        where.append("COALESCE(js.decision,'unreviewed')!='skip'")
     elif decision in ("unreviewed", "apply", "maybe", "skip"):
-        where.append("j.decision=?")
+        where.append("COALESCE(js.decision,'unreviewed')=?")
         params.append(decision)
     if language == "preferred":
         where.append("s.language_label!='german_heavy'")
@@ -405,7 +473,6 @@ def list_jobs_for_profile(
         where.append("s.language_label=?")
         params.append(language)
     if content_language == "profile":
-        profile = get_profile(profile_id)
         allowed = profile.get("content_languages", []) if profile else []
         if allowed:
             where.append(f"j.content_language IN ({','.join('?' for _ in allowed)})")
@@ -413,15 +480,17 @@ def list_jobs_for_profile(
     elif content_language in ("de", "en", "mixed", "unknown"):
         where.append("j.content_language=?")
         params.append(content_language)
-    params.append(limit)
+    params = [owner_key, owner_key, *params, limit]
     with connection() as con:
         rows = con.execute(
-            f"""SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.created_at,j.first_seen,j.decision,j.decision_at,
+            f"""SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.created_at,j.first_seen,
+                                   COALESCE(js.decision,'unreviewed') AS decision,js.decision_at,
                                    j.content_language,j.content_language_confidence,j.content_language_source,
                                    s.job_score AS score,s.language_score,s.overall_score,s.language_label,s.reasons_json,s.language_reasons_json,
                                    a.status AS application_status,a.applied_at
                             FROM job_profile_scores s JOIN jobs j ON j.job_key=s.job_key
-                            LEFT JOIN applications a ON a.job_key=j.job_key
+                            LEFT JOIN user_job_state js ON js.owner_key=? AND js.job_key=j.job_key
+                            LEFT JOIN applications a ON a.owner_key=? AND a.job_key=j.job_key
                             WHERE {" AND ".join(where)}
                             ORDER BY j.first_seen DESC,s.overall_score DESC LIMIT ?""",
             params,

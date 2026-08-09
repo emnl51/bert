@@ -158,6 +158,23 @@ def require_user(request: Request) -> dict:
     return user
 
 
+def require_workspace(request: Request, credentials: HTTPBasicCredentials | None = Depends(security)) -> dict:
+    """Return the authenticated workspace owner without trusting request data.
+
+    The environment-backed administrator owns legacy rows, represented by a
+    NULL user_id. Registered accounts always use their database user id.
+    """
+    admin = current_admin(request)
+    if admin:
+        return {"kind": "admin", "user_id": None, "name": admin, "role": "admin"}
+    if credentials and authenticate_admin(request, credentials.username, credentials.password):
+        return {"kind": "admin", "user_id": None, "name": credentials.username, "role": "admin"}
+    user = current_user(request)
+    if user:
+        return {"kind": "user", "user_id": int(user["id"]), "name": user["email"], "role": user["role"]}
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
+
 def require_admin(request: Request, credentials: HTTPBasicCredentials | None = Depends(security)) -> str:
     session_user = current_admin(request)
     if session_user:
