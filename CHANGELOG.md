@@ -1,5 +1,43 @@
 # Changelog
 
+## v17.2.0 — Multi-User Workspaces and Matching Quality
+
+### Added
+
+- Adds a dedicated sign-in page for administrators, registered users and new-user registration.
+- Adds self-service account registration with single-use, time-limited email activation links.
+- Adds Argon2id password hashing, signed administrator sessions and database-backed user sessions.
+- Adds administrator controls to enable or disable accounts, revoke active sessions and cancel pending registrations.
+- Adds database backup, restore, scoped reset and recovery support for the user-account schema.
+- Adds an adjustable minimum CV Match threshold for Search Jobs with an assigned Candidate Profile; the default threshold is `58`.
+- Adds English/German role-family matching, including equivalent titles such as `Production Planner` and `Produktionsplaner / Arbeitsvorbereitung`.
+- Adds per-run rejection metrics for blocklist, employment format, general fit, language and CV Match filters.
+
+### Changed
+
+- Makes Search Profiles, Search Jobs, Candidate Profiles, decisions, applications, learning records and notification settings user-specific.
+- Runs scheduled searches for every account in the correct user, Candidate Profile and notification context.
+- Gives registered users access to their own `/app` workspace while keeping Users, Database, Logs, Updates and source administration restricted to administrators.
+- Normalizes HTML, Unicode and whitespace before requirement and skill matching.
+- Uses word-boundary matching for short skills and tools to prevent false positives such as matching `SAP` inside unrelated words.
+- Separates required and preferred job requirements in scoring and in the Intelligence UI.
+- Deduplicates equivalent listings across sources and keeps the record with the richer job description.
+- Uses deterministic tie-breaking for equally scored results.
+
+### Security
+
+- Prevents account enumeration by returning the same registration response for existing and new email addresses.
+- Rate-limits repeated registration requests by email address and client IP.
+- Keeps activation links single-use and stores only their token hashes.
+- Enforces ownership checks on user-scoped API operations to prevent cross-account IDOR access.
+- Keeps legacy data in the administrator workspace during migration instead of exposing it to newly created users.
+- Prevents negated phrases such as `no SAP experience`, `without SAP` and `SAP not required` from becoming positive CV or job evidence.
+
+### Migration
+
+- Adds backward-compatible user ownership columns and indexes while preserving existing administrator data.
+- Extends backup and recovery validation to the new account and user-scoped tables.
+
 ## v17.0.1 — Release Metadata Alignment
 
 ### Fixed
@@ -51,9 +89,9 @@
 
 ### Changed
 
-- Removed unused duplicate `log_buffer.py`; the active in-memory log system is `log_store.py` (used by the app and tests).
+- Removed unused duplicate `log_buffer.py`; the active in-memory log system is `log_store.py`.
 - Fixed an invalid type annotation in profile storage (`params: [Any]` → `params: list[Any]`).
-- Clarified the purpose of the legacy `DEFAULT_KEYWORDS` seed data with a comment pointing to profile-specific keyword sets in `profile_store.py`.
+- Clarified the purpose of the legacy `DEFAULT_KEYWORDS` seed data.
 
 ## v16.5.0 — Job-ad Language Detection
 
@@ -67,139 +105,110 @@
 
 ### Added
 
-- Evidence-based CV Match engine with structured requirement extraction
-- Seven scoring categories: role, experience, technical skills, tools/software, industry, education/certifications and responsibilities
-- Requirement-level `match`, `partial` and `missing` states with CV evidence excerpts
-- Hybrid scoring: 70% deterministic evidence + 30% optional Ollama context
-- Evidence-linked AI contextual notes and transferable-experience explanations
-- Analysis cache keyed by Candidate Profile, job content and AI settings
-- Manual **Re-analyze** action in the Intelligence UI
-- CV Match score breakdown and detailed evidence viewer
-- Configurable Ollama timeout
-- Linux Docker host-gateway mapping for `host.docker.internal`
+- Evidence-based CV Match engine with structured requirement extraction.
+- Seven scoring categories: role, experience, technical skills, tools/software, industry, education/certifications and responsibilities.
+- Requirement-level `match`, `partial` and `missing` states with CV evidence excerpts.
+- Hybrid scoring: 70% deterministic evidence and 30% optional Ollama context.
+- Evidence-linked AI contextual notes and transferable-experience explanations.
+- Analysis cache keyed by Candidate Profile, job content and AI settings.
+- Manual **Re-analyze** action in the Intelligence UI.
+- CV Match score breakdown and detailed evidence viewer.
+- Configurable Ollama timeout.
+- Linux Docker host-gateway mapping for `host.docker.internal`.
 
-### AI safety / reliability
+### AI safety and reliability
 
-- Ollama remains disabled by default
-- Job descriptions are explicitly treated as untrusted model data
-- AI cannot change deterministic requirement match/missing status
-- AI context must reference an existing deterministic evidence ID
-- Unknown/invented evidence references are discarded
-- Ollama failure or timeout falls back to evidence-only scoring
-- Scheduled Search Job intelligence runs in a worker thread so model calls do not block the scheduler event loop
+- Ollama remains disabled by default.
+- Job descriptions are explicitly treated as untrusted model data.
+- AI cannot change deterministic requirement match or missing status.
+- AI context must reference an existing deterministic evidence ID.
+- Unknown or invented evidence references are discarded.
+- Ollama failure or timeout falls back to evidence-only scoring.
+- Scheduled Search Job intelligence runs in a worker thread so model calls do not block the scheduler event loop.
 
-### Storage / migration
+### Storage and migration
 
 Existing `job_intelligence` tables are migrated in place with additional JSON evidence, breakdown, cache and AI context fields. Existing Candidate CV encryption remains unchanged.
-
-### Versioning
-
-- Active application version: `16.5.0`
-- `/health` and `/api/v16-health` report the active version
 
 ## v16.3.0 — StepStone Experimental Source
 
 ### Added
 
-- Experimental automated **StepStone Germany** provider
-- Dedicated StepStone configuration API and UI
-- Conservative request controls: max search terms, pages per term, results per term, timeout and request delay
-- StepStone manual-search fallback retained in Source Catalog
-- Parsing of StepStone job title, company, location, description snippet, publication text and remote/home-office signal
-- Preservation of `Werkstudent`, `Teilzeit`, `Minijob`, `Vollzeit` and hours-per-week signals for the strict employment-format gate
-- Parser and catalog regression tests
-- `beautifulsoup4` dependency for resilient HTML parsing
+- Experimental automated **StepStone Germany** provider.
+- Dedicated StepStone configuration API and UI.
+- Conservative request controls for search terms, pages, results, timeout and request delay.
+- StepStone manual-search fallback retained in Source Catalog.
+- Parsing of title, company, location, description, publication date and remote-work signals.
+- Preservation of employment-format signals for strict filtering.
+- Parser and catalog regression tests.
+- `beautifulsoup4` dependency for resilient HTML parsing.
 
-### Safety / reliability
+### Safety and reliability
 
-- StepStone is disabled until explicitly configured
-- No CAPTCHA, proxy or anti-bot bypass is implemented
-- HTTP 403/429 is surfaced as a provider error instead of aggressive retrying
-- Empty/unparseable result pages fail safely instead of storing malformed jobs
-- Requests are sequential and can be delayed to reduce load
-- StepStone source testing is automatically constrained to one query and one result page
-
-### Versioning
-
-- Active application version: `16.3.0`
-- `/health` and `/api/v16-health` report the same centralized application version
+- StepStone is disabled until explicitly configured.
+- No CAPTCHA, proxy or anti-bot bypass is implemented.
+- HTTP 403 and 429 responses are surfaced as provider errors.
+- Empty or unparseable result pages fail safely.
+- Requests are sequential and can be delayed to reduce load.
+- Source testing is constrained to one query and one result page.
 
 ## v16.2.1 — First Public Release
 
-JobTrack's first public release packages the current self-hosted job-search workflow into a Docker-first application with profile-aware filtering, ranking, automation, review and application tracking.
+JobTrack's first public release packages the self-hosted job-search workflow into a Docker-first application with profile-aware filtering, ranking, automation, review and application tracking.
 
 ### Highlights
 
-- Responsive desktop, tablet and mobile admin UI
-- Search Profiles and independent scheduled Search Jobs
-- Job Fit, Language Fit and Overall Fit scoring
-- Strict Werkstudent / Part-time / Minijob employment-format filtering
-- Application Tracker and review workflow
-- Profile-specific positive and negative learning
-- Candidate Profiles with encrypted CV text
-- CV/job intelligence with deterministic local scoring and optional Ollama support
-- Source analytics and quality funnel metrics
-- In-app log viewer with filtering and secret redaction
-- Database backup, scoped reset and factory reset
-- Telegram and email notifications
-- Prebuilt release image delivery through GitHub Container Registry (GHCR)
+- Responsive desktop, tablet and mobile admin UI.
+- Search Profiles and independent scheduled Search Jobs.
+- Job Fit, Language Fit and Overall Fit scoring.
+- Strict Werkstudent, part-time and Minijob employment-format filtering.
+- Application Tracker and review workflow.
+- Profile-specific positive and negative learning.
+- Candidate Profiles with encrypted CV text.
+- Deterministic CV/job intelligence with optional Ollama support.
+- Source analytics and quality funnel metrics.
+- In-app log viewer with filtering and secret redaction.
+- Database backup, scoped reset and factory reset.
+- Telegram and email notifications.
+- Prebuilt release images through GitHub Container Registry.
 
 ### Job sources
 
-Stable/structured integrations include Arbeitnow, Adzuna, Jooble, Greenhouse, Lever, SmartRecruiters and RSS/Atom feeds.
+Stable integrations include Arbeitnow, Adzuna, Jooble, Greenhouse, Lever, SmartRecruiters and RSS/Atom feeds.
 
-An experimental JobSpy integration can retrieve jobs from LinkedIn, Indeed, Google Jobs and Glassdoor. JobSpy remains explicitly experimental because scraping reliability can change with upstream rate limits, anti-bot controls and HTML changes.
+The experimental JobSpy integration can retrieve jobs from LinkedIn, Indeed, Google Jobs and Glassdoor. Its reliability can change because of upstream rate limits, anti-bot controls and HTML changes.
 
 ### Reliability and safety
 
-- Per-query and total JobSpy timeouts
-- Provider error secret redaction
-- Historical run secret scrubbing
-- Persistent SQLite storage under the Docker `/data` volume
-- Automatic SQLite snapshot before destructive database reset operations
-- Responsive UI compatibility layer for the modern Job Review Queue
-- Current public `/health` endpoint reports the active release version
-- Python compile, JavaScript syntax and pytest checks in GitHub Actions
-- Release image publishing is blocked unless compile, JavaScript syntax and pytest checks pass
-- OCI source metadata and build provenance are attached to GHCR images
+- Per-query and total JobSpy timeouts.
+- Provider-error secret redaction.
+- Historical-run secret scrubbing.
+- Persistent SQLite storage under the Docker `/data` volume.
+- Automatic SQLite snapshot before destructive database reset operations.
+- Responsive Job Review Queue.
+- Public `/health` endpoint reporting the active release version.
+- Python compile, JavaScript syntax and pytest checks in GitHub Actions.
+- Release-image publishing blocked unless all required checks pass.
+- OCI source metadata and build provenance attached to GHCR images.
 
 ### Container image
 
 Published releases are pushed to:
 
-```text
+\```text
 ghcr.io/emnl51/jobtrack
-```
+\```
 
-For this release the workflow creates:
-
-```text
-ghcr.io/emnl51/jobtrack:v16.2.1
-ghcr.io/emnl51/jobtrack:16.2.1
-ghcr.io/emnl51/jobtrack:latest
-```
-
-A dedicated `docker-compose.ghcr.yml` file allows deployment without building the application locally.
-
-### Upgrade / deployment
+### Upgrade and deployment
 
 Keep the existing `.env`, `/data` Docker volume and `APP_SECRET_KEY` when updating an existing installation.
 
 Source build:
 
-```bash
+\```bash
 cd ~/jobtrack
 git pull origin main
 docker compose up -d --build
-```
-
-Prebuilt GHCR image:
-
-```bash
-cd ~/jobtrack
-git pull origin main
-JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml pull
-JOBTRACK_IMAGE_TAG=v16.2.1 docker compose -f docker-compose.ghcr.yml up -d
-```
+\```
 
 Do not use `docker compose down -v` unless persistent volumes are intentionally being deleted.
