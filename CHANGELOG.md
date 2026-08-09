@@ -1,5 +1,13 @@
 # Changelog
 
+## v16.6.0 — Maintenance Cleanup
+
+### Changed
+
+- Removed unused duplicate `log_buffer.py`; the active in-memory log system is `log_store.py` (used by the app and tests).
+- Fixed an invalid type annotation in profile storage (`params: [Any]` → `params: list[Any]`).
+- Clarified the purpose of the legacy `DEFAULT_KEYWORDS` seed data with a comment pointing to profile-specific keyword sets in `profile_store.py`.
+
 ## v16.5.0 — Job-ad Language Detection
 
 - Detects the dominant language of each job ad as German, English, mixed or unknown.
