@@ -1,3 +1,4 @@
+import base64
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -65,6 +66,20 @@ def test_public_registration_activation_and_user_session(tmp_path, monkeypatch):
     assert '<script src="/users-ui.js"></script>' not in workspace.text
     assert '<script src="/database-ui.js"></script>' not in workspace.text
     assert '<script src="/system-email-ui.js"></script>' not in workspace.text
+    basic = base64.b64encode(b"admin:correct-admin-password").decode()
+    basic_headers = {"Authorization": f"Basic {basic}"}
+    workspace_with_basic = client.get("/app", headers=basic_headers)
+    assert '"isAdmin": false' in workspace_with_basic.text
+    assert client.get("/api/admin/users", headers=basic_headers).status_code == 401
+    assert client.get("/api/database/status", headers=basic_headers).status_code == 401
+    assert client.get("/api/profiles", headers=basic_headers).json() == {"profiles": []}
+    search_jobs = client.get("/api/search-jobs", headers=basic_headers).json()
+    assert search_jobs["profiles"] == []
+    assert search_jobs["search_jobs"] == []
+    candidates = client.get("/api/candidates", headers=basic_headers).json()
+    assert candidates["candidates"] == []
+    applications = client.get("/api/applications", headers=basic_headers).json()
+    assert applications["applications"] == []
     assert registration_for_token(sent["token"]) is None
 
 

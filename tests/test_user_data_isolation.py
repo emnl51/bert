@@ -30,14 +30,18 @@ def setup_tenants(tmp_path, monkeypatch):
 
 def test_profiles_searches_candidates_and_settings_are_isolated(tmp_path, monkeypatch):
     one, two = setup_tenants(tmp_path, monkeypatch)
-    p1 = list_profiles(user_id=one)[0]
-    p2 = list_profiles(user_id=two)[0]
+    assert list_profiles(user_id=one) == []
+    assert list_profiles(user_id=two) == []
+    p1_id = save_profile({"name": "Shared name", "slug": "shared", "is_default": True}, user_id=one)
+    p2_id = save_profile({"name": "Shared name", "slug": "shared", "is_default": True}, user_id=two)
+    p1 = get_profile(p1_id, user_id=one)
+    p2 = get_profile(p2_id, user_id=two)
     assert p1["name"] == p2["name"]
     assert p1["id"] != p2["id"]
     assert get_profile(p2["id"], user_id=one) is None
 
-    extra_one = save_profile({"name": "Shared name", "slug": "shared"}, user_id=one)
-    extra_two = save_profile({"name": "Shared name", "slug": "shared"}, user_id=two)
+    extra_one = save_profile({"name": "Extra", "slug": "extra"}, user_id=one)
+    extra_two = save_profile({"name": "Extra", "slug": "extra"}, user_id=two)
     assert extra_one != extra_two
 
     search_one = save_search_job({"name": "Daily", "profile_id": p1["id"]}, user_id=one)
@@ -90,8 +94,8 @@ def test_job_decisions_and_applications_are_isolated(tmp_path, monkeypatch):
 
 def test_api_rejects_cross_user_resource_ids(tmp_path, monkeypatch):
     one, two = setup_tenants(tmp_path, monkeypatch)
-    p1 = list_profiles(user_id=one)[0]
-    p2 = list_profiles(user_id=two)[0]
+    p1 = get_profile(save_profile({"name": "One", "slug": "one"}, user_id=one), user_id=one)
+    p2 = get_profile(save_profile({"name": "Two", "slug": "two"}, user_id=two), user_id=two)
     other_search = save_search_job({"name": "Other private search", "profile_id": p2["id"]}, user_id=two)
     token = create_user_session(one)
     client = TestClient(app)
