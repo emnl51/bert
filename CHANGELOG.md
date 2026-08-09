@@ -1,5 +1,41 @@
 # Changelog
 
+## v17.0.1 — Release Metadata Alignment
+
+### Fixed
+
+- Aligns the application, health endpoint and runtime UI version with the `17.0.1` release.
+- Restores the missing changelog history for `16.8`, `16.8.1`, `16.8.2` and `17.0.0`.
+- Updates the tagged-image and current-version examples in the README.
+- Blocks release-container publishing when the release tag does not match `app/version.py`.
+
+## v17.0.0 — Bert Branding
+
+- Completes the public-facing rename from JobTrack to Bert.
+- Reads the sidebar product name from `APP_NAME` instead of hard-coding the legacy name.
+- Reads the complete sidebar version from the backend instead of displaying a fixed major version.
+- Keeps the application title, health response and navigation shell on one centralized version source.
+
+## v16.8.2 — Bert Deployment Rename and CI Expansion
+
+- Renames the Docker service, container user, persistent volume and deployment examples from JobTrack to Bert.
+- Updates GHCR and source-installation examples for the Bert repository and image.
+- Adds CodeQL analysis and an additional Docker image build workflow.
+- Aligns release-container and update-management tests with the renamed deployment resources.
+- Applies Ruff formatting fixes required by the expanded CI checks.
+
+## v16.8.1 — Release Automation
+
+- Adds a GitHub Actions workflow that builds Python release distributions when a GitHub Release is published.
+- Uploads the built distributions as workflow artifacts and prepares them for trusted PyPI publishing.
+
+## v16.8 — Security and Configuration Hardening
+
+- Adds per-client failed-login rate limiting with temporary blocking after repeated failures.
+- Adds same-origin protection for state-changing browser requests.
+- Restricts the SQLite database, WAL and shared-memory files to owner-only permissions when possible.
+- Restores a complete `.env.example` with the supported application configuration.
+
 ## v16.7.0 — Jobs Workspace and Grouped Navigation
 
 - Reorganizes navigation into Dashboard, Jobs, Intelligence, Settings and Administration groups.
