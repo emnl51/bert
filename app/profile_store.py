@@ -261,7 +261,12 @@ def ensure_profile_schema(user_id: int | None = None) -> None:
                     "UPDATE search_profiles SET keywords_json=?,updated_at=? WHERE id=?",
                     (json.dumps(keywords, ensure_ascii=False), now, row["id"]),
                 )
-        if con.execute("SELECT COUNT(*) FROM search_profiles WHERE user_id IS ?", (user_id,)).fetchone()[0] == 0:
+        # Preserve legacy administrator defaults, but leave registered accounts
+        # empty so they never inherit sample or another owner's workspace data.
+        if (
+            user_id is None
+            and con.execute("SELECT COUNT(*) FROM search_profiles WHERE user_id IS NULL").fetchone()[0] == 0
+        ):
             common_locations = json.dumps(
                 [
                     "berlin",

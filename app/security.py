@@ -167,11 +167,11 @@ def require_workspace(request: Request, credentials: HTTPBasicCredentials | None
     admin = current_admin(request)
     if admin:
         return {"kind": "admin", "user_id": None, "name": admin, "role": "admin"}
-    if credentials and authenticate_admin(request, credentials.username, credentials.password):
-        return {"kind": "admin", "user_id": None, "name": credentials.username, "role": "admin"}
     user = current_user(request)
     if user:
         return {"kind": "user", "user_id": int(user["id"]), "name": user["email"], "role": user["role"]}
+    if credentials and authenticate_admin(request, credentials.username, credentials.password):
+        return {"kind": "admin", "user_id": None, "name": credentials.username, "role": "admin"}
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
 
 
@@ -179,6 +179,11 @@ def require_admin(request: Request, credentials: HTTPBasicCredentials | None = D
     session_user = current_admin(request)
     if session_user:
         return session_user
+
+    # A valid registered-user session must never be elevated by a Basic Auth
+    # header supplied by the browser, reverse proxy, or a compatibility layer.
+    if current_user(request):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Administrator access required")
 
     if credentials and authenticate_admin(request, credentials.username, credentials.password):
         return credentials.username

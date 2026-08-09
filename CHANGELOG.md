@@ -11,6 +11,8 @@
 
 ### Security
 
+- Prevents a registered-user session from being elevated by a legacy Basic Auth header.
+- Starts newly activated accounts with an empty private workspace instead of seeded profiles and searches.
 - Encrypts the system SMTP password at rest using `APP_SECRET_KEY`.
 - Never returns the saved SMTP password through the API or displays it in the web interface.
 - Preserves the existing password when the password field is left blank.
