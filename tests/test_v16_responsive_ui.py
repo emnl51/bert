@@ -14,12 +14,18 @@ def test_v16_shell_has_mobile_navigation_and_table_cards():
 
 def test_v16_main_loads_shell_last():
     text = Path("app/v16_main.py").read_text(encoding="utf-8")
+    shell = Path("app/ui-shell.js").read_text(encoding="utf-8")
     version_text = Path("app/version.py").read_text(encoding="utf-8")
     assert 'VERSION = "16.7.0"' in version_text
     assert "from .version import VERSION" in text
     assert "app.version = VERSION" in text
     assert '<script src="/ui-shell.js"></script>' in text
     assert text.index('<script src="/log-ui.js"></script>') < text.index('<script src="/ui-shell.js"></script>')
+    assert '{"appName": settings.app_name, "version": VERSION}' in text
+    assert "window.APP_SHELL" in text
+    assert "SHELL.appName" in shell
+    assert "SHELL.version" in shell
+    assert '<span class="jt-brand-text">JobTrack</span>' not in shell
 
 
 def test_v16_owns_current_public_health_route():
