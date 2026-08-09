@@ -351,7 +351,7 @@ def list_jobs_for_profile(
 ) -> list[dict[str, Any]]:
     ensure_profile_schema()
     where = ["s.profile_id=?", "s.overall_score>=?"]
-    params: [Any] = [profile_id, min_score]
+    params: list[Any] = [profile_id, min_score]
     if decision == "active":
         where.append("j.decision!='skip'")
     elif decision in ("unreviewed", "apply", "maybe", "skip"):

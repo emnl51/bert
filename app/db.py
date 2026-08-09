@@ -108,6 +108,8 @@ DEFAULT_SETTINGS = {
     "telegram_chat_id": settings.telegram_chat_id,
 }
 
+# Legacy seed data for the global keywords table (used by the /api/keywords endpoint
+# and the legacy UI). Profile-specific keyword sets live in profile_store.py.
 DEFAULT_KEYWORDS = {
     "search": [
         ("werkstudent supply chain", 0),
