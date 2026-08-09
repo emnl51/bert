@@ -8,6 +8,8 @@ JobTrack combines structured job APIs and ATS feeds with optional experimental j
 
 - Responsive desktop, tablet and mobile admin UI
 - Independent **Search Profiles** and scheduled **Search Jobs**
+- Grouped Dashboard, Jobs, Intelligence, Settings and Administration navigation
+- Full-page Job editor with explicit profile inheritance and per-job overrides
 - Job Fit, Language Fit and Overall Fit scoring
 - Strict employment-format filtering for Werkstudent / Part-time profiles
 - Automatic German/English job-ad language detection with DE, EN, mixed and unknown filters
@@ -39,7 +41,9 @@ For the strict part-time profile, a vacancy must contain a positive employment-f
 
 ### Search Jobs
 
-A Search Job is an independent automation built on a Search Profile. It can configure profile, target location, selected sources, schedule, score overrides, maximum results, notifications and an optional Candidate Profile.
+A Search Job is an independent automation built on a Search Profile. The profile supplies base location, search, scoring and filtering values. The Job editor can keep those inherited values or replace them only for that job. Profile selection, search phrases, allowlist, blacklist, sources, score thresholds, notifications, Candidate Profile and schedule are managed on one page.
+
+Allowlist matches add positive Job Fit points but never force a vacancy into the results. Blacklist matches are hard exclusions: the vacancy is skipped before scoring, profile storage and notification.
 
 When a Candidate Profile is assigned, eligible jobs can automatically receive CV Match intelligence and are sorted using CV Match before normal fit scores.
 
@@ -307,7 +311,7 @@ docker compose exec tracker python -c "import app.v16_main; print(app.v16_main.a
 Expected current main version:
 
 ```text
-16.6.0
+16.7.0
 ```
 
 ### Manage updates from the web UI

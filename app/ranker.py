@@ -10,6 +10,17 @@ def _has_any(text: str, phrases: tuple[str, ...]) -> bool:
     return any(phrase in text for phrase in phrases)
 
 
+def blocklist_matches(job: Job, keywords: dict[str, dict[str, int]]) -> list[str]:
+    """Return configured hard-block terms found in the vacancy text."""
+    body = _normalise(f"{job.title} {job.description}")
+    matches = []
+    for value in (keywords.get("blocklist") or {}).keys():
+        term = _normalise(str(value))
+        if term and term in body and term not in matches:
+            matches.append(term)
+    return matches
+
+
 def score_job(job: Job, keywords: dict[str, dict[str, int]], location_terms: list[str]) -> tuple[int, list[str]]:
     """Return a 0-100 role/skill fit score, independent from language fit."""
     title = _normalise(job.title)
@@ -31,6 +42,13 @@ def score_job(job: Job, keywords: dict[str, dict[str, int]], location_terms: lis
             score += weight
             if len(reasons) < 8:
                 reasons.append(f"skill: {term}")
+    for value, weight in (keywords.get("allowlist") or {}).items():
+        term = _normalise(str(value))
+        boost = max(0, int(weight))
+        if term and term in body and boost:
+            score += boost
+            if len(reasons) < 8:
+                reasons.append(f"allowlist: {term}")
     for term, penalty in keywords.get("negative", {}).items():
         if term in title:
             score += penalty

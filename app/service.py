@@ -9,7 +9,7 @@ from .notifier import send_email, send_telegram
 from .language_store import upsert_language_fit
 from .profile_store import ensure_profile_schema, list_profiles, upsert_profile_score
 from .providers import fetch_all_jobs
-from .ranker import assess_language_fit, calculate_overall_score, score_job
+from .ranker import assess_language_fit, blocklist_matches, calculate_overall_score, score_job
 from .runtime import runtime_config
 from .source_analytics import ensure_source_analytics_schema, save_source_run_stats
 
@@ -62,7 +62,7 @@ async def run_search() -> dict:
             default_employment_ok, _default_employment_label, _default_employment_reasons = assess_employment_fit(
                 raw_job, default_profile
             )
-            if not default_employment_ok:
+            if not default_employment_ok or blocklist_matches(raw_job, default_profile.get("keywords") or {}):
                 continue
 
             is_new = None
@@ -70,6 +70,8 @@ async def run_search() -> dict:
             for profile in profiles:
                 job = deepcopy(raw_job)
                 keywords = profile.get("keywords") or cfg["keywords"]
+                if blocklist_matches(job, keywords):
+                    continue
                 location_terms = profile.get("location_terms") or cfg["location_terms"]
                 job.score, job.reasons = score_job(job, keywords, location_terms)
                 employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile)

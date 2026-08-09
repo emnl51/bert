@@ -1,5 +1,5 @@
 from app.models import Job
-from app.ranker import score_job
+from app.ranker import blocklist_matches, score_job
 
 KEYWORDS = {
     "title": {"supply chain": 32, "procurement": 30},
@@ -38,3 +38,37 @@ def test_unrelated_role_scores_lower():
     )
     score, _ = score_job(job, KEYWORDS, LOCATIONS)
     assert score < 20
+
+
+def test_allowlist_can_only_add_positive_points():
+    job = Job(
+        source="test",
+        external_id="3",
+        title="Process Engineer",
+        company="Example",
+        location="Berlin",
+        url="https://example.com/3",
+        description="Automotive manufacturing and IATF 16949",
+    )
+    baseline, _ = score_job(job, {**KEYWORDS, "allowlist": {}}, LOCATIONS)
+    boosted, reasons = score_job(
+        job,
+        {**KEYWORDS, "allowlist": {"automotive": 15, "iatf 16949": -50}},
+        LOCATIONS,
+    )
+    assert boosted == baseline + 15
+    assert "allowlist: automotive" in reasons
+    assert not any("iatf 16949" in reason for reason in reasons)
+
+
+def test_blocklist_reports_hard_exclusion_matches():
+    job = Job(
+        source="test",
+        external_id="4",
+        title="Software Developer",
+        company="Example",
+        location="Berlin",
+        url="https://example.com/4",
+        description="Backend platform role",
+    )
+    assert blocklist_matches(job, {"blocklist": {"software developer": -100}}) == ["software developer"]

@@ -1,10 +1,19 @@
 (() => {
   const $ = id => document.getElementById(id);
   const NAV = {
-    overview:['⌂','Overview'], applications:['✓','Applications'], search:['⌕','Search & Schedule'],
-    sources:['◫','Sources'], keywords:['#','Keywords'], notifications:['↗','Notifications'],
+    overview:['⌂','Overview'], searchJobs:['▤','Jobs'], jobReview:['✓','Job Review'],
+    applications:['→','Applications'], intelligence:['◇','Intelligence'], candidates:['◎','Candidate Profiles'],
+    learning:['+','Learning'], profiles:['◉','Search Profiles'], sources:['◫','Sources'],
+    search:['⌕','Global Search'], keywords:['#','Ranking Rules'], notifications:['↗','Notifications'],
     runs:['↻','Run History'], database:['DB','Database'], logs:['>_','Logs'], updates:['↑','Updates']
   };
+  const GROUPS = [
+    {key:'dashboard',label:'Dashboard',icon:'⌂',tabs:['overview']},
+    {key:'jobs',label:'Jobs',icon:'▤',tabs:['searchJobs','jobReview','applications']},
+    {key:'intelligence',label:'Intelligence',icon:'◇',tabs:['intelligence','candidates','learning']},
+    {key:'settings',label:'Settings',icon:'⚙',tabs:['profiles','sources','search','keywords','notifications']},
+    {key:'administration',label:'Administration',icon:'▦',tabs:['runs','database','logs','updates']},
+  ];
 
   function installStyles(){
     if($('jobtrack-v16-style')) return;
@@ -15,7 +24,9 @@
       .side{width:auto;min-width:0;height:100dvh;position:sticky;top:0;padding:18px 12px;background:linear-gradient(180deg,#0b1220 0%,#111827 58%,#172033 100%);z-index:40;display:flex;flex-direction:column;overflow:hidden;box-shadow:8px 0 28px rgba(15,23,42,.07)}
       .brand{padding:4px 10px 20px;font-size:20px;white-space:nowrap;overflow:hidden}.brand small{opacity:.65}.jt-brand-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.jt-collapse{width:34px;height:34px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#cbd5e1;border-radius:9px;cursor:pointer;flex:none;font-size:17px}
       .nav{display:flex;flex-direction:column;gap:3px;overflow-y:auto;overflow-x:hidden;padding:2px 0 12px;scrollbar-width:thin}.nav button{display:flex;align-items:center;gap:11px;width:100%;min-height:44px;padding:9px 11px;margin:0;border-radius:10px;white-space:nowrap;font-weight:650;transition:.15s ease;color:#cbd5e1}.nav button:hover{background:rgba(255,255,255,.07);transform:none}.nav button.active{background:linear-gradient(90deg,rgba(37,99,235,.38),rgba(37,99,235,.10));color:#fff;box-shadow:inset 3px 0 0 #60a5fa}.jt-nav-icon{width:22px;text-align:center;font-size:14px;flex:none;color:#94a3b8}.nav button.active .jt-nav-icon{color:#bfdbfe}.jt-nav-label{overflow:hidden;text-overflow:ellipsis}
+      .jt-nav-group{display:grid;gap:2px}.jt-nav-group-title{min-height:42px!important;color:#f8fafc!important;font-size:12px;letter-spacing:.025em}.jt-nav-group-title:hover{background:rgba(255,255,255,.06)!important}.jt-nav-group-title .jt-group-icon{width:22px;text-align:center;color:#93c5fd}.jt-nav-group-title .jt-group-label{flex:1;text-align:left}.jt-nav-chevron{font-size:11px;color:#64748b;transition:transform .16s ease}.jt-nav-group.open .jt-nav-chevron{transform:rotate(90deg)}.jt-nav-group-panel{display:none;gap:2px;padding:0 0 5px 8px}.jt-nav-group.open .jt-nav-group-panel{display:grid}.jt-nav-group-panel>button{min-height:38px;padding-block:7px;font-size:13px;font-weight:560}.jt-nav-group-panel>button .jt-nav-icon{font-size:12px}
       .app.jt-collapsed .brand .jt-brand-text,.app.jt-collapsed .brand small,.app.jt-collapsed .jt-nav-label{display:none}.app.jt-collapsed .brand{padding-left:9px}.app.jt-collapsed .jt-brand-row{justify-content:center}.app.jt-collapsed .nav button{justify-content:center;padding-inline:8px}.app.jt-collapsed .jt-nav-icon{font-size:15px}.app.jt-collapsed .jt-collapse{transform:rotate(180deg)}
+      .app.jt-collapsed .jt-nav-group-title{display:none}.app.jt-collapsed .jt-nav-group-panel{display:grid;padding-left:0}
       .main{max-width:none;width:100%;min-width:0;padding:24px clamp(18px,2.5vw,38px) 50px}.top{min-height:62px;position:sticky;top:0;z-index:20;margin:-10px 0 20px;padding:10px 0;background:rgba(248,250,252,.86);backdrop-filter:blur(14px);display:flex;gap:14px}.top h1{font-size:clamp(21px,2vw,27px);letter-spacing:-.035em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top-actions{display:flex;gap:8px;align-items:center}.jt-mobile-menu{display:none;width:42px;height:42px;border:1px solid var(--jt-border);background:white;border-radius:10px;font-size:20px;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 10px rgba(15,23,42,.05)}
       .card{border-radius:var(--jt-radius);border-color:var(--jt-border);box-shadow:0 8px 28px rgba(15,23,42,.045);padding:clamp(14px,1.8vw,20px)}.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.metric{font-size:clamp(23px,2.2vw,30px)}.section-title{margin:26px 0 11px}.section-title h2{font-size:19px;letter-spacing:-.015em}
       .btn{min-height:38px;border-radius:9px;transition:transform .12s ease,box-shadow .12s ease,background .12s ease}.btn:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(15,23,42,.08)}.btn.primary{background:linear-gradient(135deg,var(--jt-blue),var(--jt-blue-dark))}.btn.small{min-height:31px}.field input,.field select,.field textarea,select,input[type=date]{min-height:40px;border-color:#cbd5e1}.field input:focus,.field select:focus,.field textarea:focus,select:focus,input:focus{outline:3px solid rgba(37,99,235,.11);border-color:#60a5fa}
@@ -41,6 +52,36 @@
       if(!btn.querySelector('.jt-nav-icon')) btn.innerHTML=`<span class="jt-nav-icon" aria-hidden="true">${meta[0]}</span><span class="jt-nav-label">${meta[1]}</span>`;
       btn.setAttribute('title',meta[1]);
     });
+  }
+
+  function groupNavigation(){
+    const nav=document.querySelector('.nav'); if(!nav||nav.querySelector('.jt-nav-group')) return;
+    const buttons=new Map([...nav.querySelectorAll(':scope > button[data-tab]')].map(btn=>[btn.dataset.tab,btn]));
+    const active=[...buttons.values()].find(btn=>btn.classList.contains('active'));
+    nav.replaceChildren();
+    for(const group of GROUPS){
+      const items=group.tabs.map(tab=>buttons.get(tab)).filter(Boolean); if(!items.length) continue;
+      const wrap=document.createElement('div'); wrap.className='jt-nav-group'; wrap.dataset.group=group.key;
+      const title=document.createElement('button'); title.type='button'; title.className='jt-nav-group-title';
+      title.innerHTML=`<span class="jt-group-icon" aria-hidden="true">${group.icon}</span><span class="jt-group-label">${group.label}</span><span class="jt-nav-chevron" aria-hidden="true">›</span>`;
+      title.setAttribute('aria-expanded','false'); title.setAttribute('aria-controls',`jt-nav-${group.key}`);
+      const panel=document.createElement('div'); panel.id=`jt-nav-${group.key}`; panel.className='jt-nav-group-panel';
+      items.forEach(btn=>panel.appendChild(btn)); wrap.append(title,panel); nav.appendChild(wrap);
+      const shouldOpen=items.includes(active)||(!active&&group.key==='dashboard');
+      wrap.classList.toggle('open',shouldOpen); title.setAttribute('aria-expanded',String(shouldOpen));
+      title.onclick=()=>{
+        const app=document.querySelector('.app');
+        if(app?.classList.contains('jt-collapsed')){app.classList.remove('jt-collapsed');try{localStorage.setItem('jobtrack-sidebar-collapsed','0')}catch(_){} }
+        const opening=!wrap.classList.contains('open');
+        nav.querySelectorAll('.jt-nav-group').forEach(node=>{node.classList.remove('open');node.querySelector('.jt-nav-group-title')?.setAttribute('aria-expanded','false')});
+        wrap.classList.toggle('open',opening); title.setAttribute('aria-expanded',String(opening));
+      };
+    }
+  }
+
+  function revealGroup(tab){
+    const btn=document.querySelector(`.nav button[data-tab="${tab}"]`), group=btn?.closest('.jt-nav-group'); if(!group) return;
+    document.querySelectorAll('.jt-nav-group').forEach(node=>{const open=node===group;node.classList.toggle('open',open);node.querySelector('.jt-nav-group-title')?.setAttribute('aria-expanded',String(open))});
   }
 
   function annotateTables(root=document){
@@ -71,7 +112,9 @@
     mobile.onclick=()=>setMenu(!side.classList.contains('jt-open')); overlay.onclick=()=>setMenu(false);
     document.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
     side.addEventListener('click',e=>{if(e.target.closest('.nav button')&&window.innerWidth<=980)setMenu(false)});
-    decorateNav(); annotateTables();
+    groupNavigation(); decorateNav(); annotateTables();
+    side.addEventListener('click',e=>{const btn=e.target.closest('.nav button[data-tab]');if(!btn)return;revealGroup(btn.dataset.tab);try{localStorage.setItem('jobtrack-tab',btn.dataset.tab)}catch(_){}setTimeout(()=>{if($('pageTitle'))$('pageTitle').textContent=(NAV[btn.dataset.tab]||[])[1]||btn.textContent.trim()},0)});
+    try{const saved=localStorage.getItem('jobtrack-tab');const savedButton=saved?document.querySelector(`.nav button[data-tab="${saved}"]`):null;if(savedButton&&!savedButton.classList.contains('active'))savedButton.click()}catch(_){}
     const observer=new MutationObserver(muts=>{decorateNav();for(const m of muts){m.addedNodes.forEach(n=>{if(n.nodeType===1) annotateTables(n)})}annotateTables()});
     observer.observe(document.body,{childList:true,subtree:true});
     window.addEventListener('resize',()=>{if(window.innerWidth>980)setMenu(false)});
