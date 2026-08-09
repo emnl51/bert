@@ -68,7 +68,8 @@ def test_update_posts_require_matching_origin_and_action_header():
     with pytest.raises(HTTPException, match="Missing update action"):
         require_same_origin_update(
             request_with_headers(
-                host="yourdomain.com", origin="https://yourdomain.com"
+                host="yourdomain.com",
+                origin="https://yourdomain.com",
             )
         )
 
@@ -92,7 +93,9 @@ def test_updater_detects_fast_forward_update_and_blocks_dirty_tree(
     git(repo, "config", "user.email", "test@example.com")
     git(repo, "config", "user.name", "Test")
     (repo / "app").mkdir()
-    (repo / "app/version.py").write_text('VERSION = "1.0.0"\n', encoding="utf-8")
+    (repo / "app/version.py").write_text(
+        'VERSION = "1.0.0"\n', encoding="utf-8"
+    )
     (repo / "docker-compose.yml").write_text(
         "services:\n  bert:\n    image: test\n", encoding="utf-8"
     )
@@ -118,7 +121,9 @@ def test_updater_detects_fast_forward_update_and_blocks_dirty_tree(
     monkeypatch.setenv("BERT_REPO_DIR", str(repo))
     monkeypatch.setenv("BERT_BRANCH", "main")
     monkeypatch.setenv("BERT_COMPOSE_FILES", "docker-compose.yml")
-    monkeypatch.setenv("BERT_UPDATE_STATE_FILE", str(tmp_path / "status.json"))
+    monkeypatch.setenv(
+        "BERT_UPDATE_STATE_FILE", str(tmp_path / "status.json")
+    )
     monkeypatch.setenv("BERT_UPDATE_TOKEN", "x" * 48)
     updater = BertUpdater()
 
