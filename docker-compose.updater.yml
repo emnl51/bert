@@ -1,4 +1,4 @@
 services:
-  tracker:
+  bert:
     volumes:
-      - /run/jobtrack-updater:/run/jobtrack-updater:ro
+      - /run/bert-updater:/run/bert-updater:ro
