@@ -10,6 +10,7 @@ JobTrack combines structured job APIs and ATS feeds with optional experimental j
 - Independent **Search Profiles** and scheduled **Search Jobs**
 - Job Fit, Language Fit and Overall Fit scoring
 - Strict employment-format filtering for Werkstudent / Part-time profiles
+- Automatic German/English job-ad language detection with DE, EN, mixed and unknown filters
 - Candidate Profiles with encrypted CV text
 - **Evidence-based CV Match with optional local Ollama AI context**
 - Profile-specific positive and negative preference learning
@@ -26,7 +27,7 @@ JobTrack combines structured job APIs and ATS feeds with optional experimental j
 
 ### Search Profiles
 
-A Search Profile defines target location, search phrases, title/skill/format boosts, negative rules, minimum Job/Language fit, German-language preferences, employment-format expectations and learned preference rules.
+A Search Profile defines target location, search phrases, title/skill/format boosts, negative rules, minimum Job/Language fit, preferred German/English job-ad languages, employment-format expectations and learned preference rules.
 
 Fresh installations seed:
 
@@ -270,8 +271,8 @@ Run a tagged image:
 git clone https://github.com/emnl51/jobtrack.git
 cd jobtrack
 cp .env.example .env
-JOBTRACK_IMAGE_TAG=v16.4.1 docker compose -f docker-compose.ghcr.yml pull
-JOBTRACK_IMAGE_TAG=v16.4.1 docker compose -f docker-compose.ghcr.yml up -d
+JOBTRACK_IMAGE_TAG=v16.5.0 docker compose -f docker-compose.ghcr.yml pull
+JOBTRACK_IMAGE_TAG=v16.5.0 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 Or follow `latest`:
@@ -305,7 +306,7 @@ docker compose exec tracker python -c "import app.v16_main; print(app.v16_main.a
 Expected current main version:
 
 ```text
-16.4.1
+16.5.0
 ```
 
 ## Development and CI

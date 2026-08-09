@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS search_profiles (
     show_b2_stretch INTEGER NOT NULL DEFAULT 1,
     hide_german_heavy INTEGER NOT NULL DEFAULT 1,
     prefer_german_growth INTEGER NOT NULL DEFAULT 1,
+    content_languages_json TEXT NOT NULL DEFAULT '["de","en","mixed"]',
     keywords_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -163,6 +164,11 @@ def ensure_profile_schema() -> None:
     now = _now()
     with connection() as con:
         con.executescript(PROFILE_SCHEMA)
+        columns = {row[1] for row in con.execute("PRAGMA table_info(search_profiles)").fetchall()}
+        if "content_languages_json" not in columns:
+            con.execute(
+                'ALTER TABLE search_profiles ADD COLUMN content_languages_json TEXT NOT NULL DEFAULT \'["de","en","mixed"]\''
+            )
         if con.execute("SELECT COUNT(*) FROM search_profiles").fetchone()[0] == 0:
             common_locations = json.dumps(
                 [
@@ -233,6 +239,7 @@ def _row_to_profile(row) -> dict[str, Any]:
     p["show_b2_stretch"] = bool(p["show_b2_stretch"])
     p["hide_german_heavy"] = bool(p["hide_german_heavy"])
     p["prefer_german_growth"] = bool(p["prefer_german_growth"])
+    p["content_languages"] = json.loads(p.pop("content_languages_json") or "[]")
     p["location_terms"] = json.loads(p.pop("location_terms_json") or "[]")
     p["keywords"] = json.loads(p.pop("keywords_json") or "{}")
     return p
@@ -277,6 +284,7 @@ def save_profile(data: dict[str, Any], profile_id: int | None = None) -> int:
         "show_b2_stretch": int(bool(data.get("show_b2_stretch", True))),
         "hide_german_heavy": int(bool(data.get("hide_german_heavy", True))),
         "prefer_german_growth": int(bool(data.get("prefer_german_growth", True))),
+        "content_languages_json": json.dumps(data.get("content_languages", ["de", "en", "mixed"])),
         "keywords_json": json.dumps(data.get("keywords", {}), ensure_ascii=False),
     }
     with connection() as con:
@@ -284,13 +292,13 @@ def save_profile(data: dict[str, Any], profile_id: int | None = None) -> int:
             con.execute("UPDATE search_profiles SET is_default=0")
         if profile_id:
             con.execute(
-                """UPDATE search_profiles SET name=:name,slug=:slug,enabled=:enabled,is_default=:is_default,target_location=:target_location,location_terms_json=:location_terms_json,min_score=:min_score,min_language_score=:min_language_score,language_weight=:language_weight,current_german_level=:current_german_level,max_german_requirement=:max_german_requirement,show_b2_stretch=:show_b2_stretch,hide_german_heavy=:hide_german_heavy,prefer_german_growth=:prefer_german_growth,keywords_json=:keywords_json,updated_at=:updated_at WHERE id=:id""",
+                """UPDATE search_profiles SET name=:name,slug=:slug,enabled=:enabled,is_default=:is_default,target_location=:target_location,location_terms_json=:location_terms_json,min_score=:min_score,min_language_score=:min_language_score,language_weight=:language_weight,current_german_level=:current_german_level,max_german_requirement=:max_german_requirement,show_b2_stretch=:show_b2_stretch,hide_german_heavy=:hide_german_heavy,prefer_german_growth=:prefer_german_growth,content_languages_json=:content_languages_json,keywords_json=:keywords_json,updated_at=:updated_at WHERE id=:id""",
                 {**fields, "updated_at": now, "id": profile_id},
             )
             return profile_id
         cur = con.execute(
-            """INSERT INTO search_profiles(name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,keywords_json,created_at,updated_at)
-                           VALUES(:name,:slug,:enabled,:is_default,:target_location,:location_terms_json,:min_score,:min_language_score,:language_weight,:current_german_level,:max_german_requirement,:show_b2_stretch,:hide_german_heavy,:prefer_german_growth,:keywords_json,:created_at,:updated_at)""",
+            """INSERT INTO search_profiles(name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,content_languages_json,keywords_json,created_at,updated_at)
+                           VALUES(:name,:slug,:enabled,:is_default,:target_location,:location_terms_json,:min_score,:min_language_score,:language_weight,:current_german_level,:max_german_requirement,:show_b2_stretch,:hide_german_heavy,:prefer_german_growth,:content_languages_json,:keywords_json,:created_at,:updated_at)""",
             {**fields, "created_at": now, "updated_at": now},
         )
         return int(cur.lastrowid)
@@ -334,7 +342,12 @@ def profile_search_terms() -> list[str]:
 
 
 def list_jobs_for_profile(
-    profile_id: int, limit: int = 100, min_score: int = 0, decision: str = "active", language: str = "preferred"
+    profile_id: int,
+    limit: int = 100,
+    min_score: int = 0,
+    decision: str = "active",
+    language: str = "preferred",
+    content_language: str = "profile",
 ) -> list[dict[str, Any]]:
     ensure_profile_schema()
     where = ["s.profile_id=?", "s.overall_score>=?"]
@@ -349,10 +362,20 @@ def list_jobs_for_profile(
     elif language in ("english_first", "german_growth", "stretch", "german_heavy", "unclear"):
         where.append("s.language_label=?")
         params.append(language)
+    if content_language == "profile":
+        profile = get_profile(profile_id)
+        allowed = profile.get("content_languages", []) if profile else []
+        if allowed:
+            where.append(f"j.content_language IN ({','.join('?' for _ in allowed)})")
+            params.extend(allowed)
+    elif content_language in ("de", "en", "mixed", "unknown"):
+        where.append("j.content_language=?")
+        params.append(content_language)
     params.append(limit)
     with connection() as con:
         rows = con.execute(
             f"""SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.created_at,j.first_seen,j.decision,j.decision_at,
+                                   j.content_language,j.content_language_confidence,j.content_language_source,
                                    s.job_score AS score,s.language_score,s.overall_score,s.language_label,s.reasons_json,s.language_reasons_json,
                                    a.status AS application_status,a.applied_at
                             FROM job_profile_scores s JOIN jobs j ON j.job_key=s.job_key
