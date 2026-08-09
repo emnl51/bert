@@ -1,5 +1,16 @@
 # Changelog
 
+## v16.7.0 — Jobs Workspace and Grouped Navigation
+
+- Reorganizes navigation into Dashboard, Jobs, Intelligence, Settings and Administration groups.
+- Replaces the Search Job modal with a searchable Jobs list and full-page editor.
+- Keeps general, search, filter, source, notification and schedule settings on one page.
+- Makes profile inheritance explicit for location, search queries, score thresholds, allowlist and blacklist.
+- Adds per-job allowlist boosts that can only increase Job Fit.
+- Adds per-job and profile blacklists as hard exclusions before scoring, storage and notification.
+- Adds Candidate Profile assignment to the same Job editor.
+- Preserves existing Search Jobs and migrates legacy profile negative terms into the profile blacklist.
+
 ## v16.6.0 — Maintenance Cleanup
 
 ### Changed

@@ -9,7 +9,7 @@ from .positive_learning import apply_positive_boost, sync_application_events
 from .feedback_store import apply_learned_penalty
 from .profile_store import get_profile, upsert_profile_score
 from .providers import fetch_all_jobs
-from .ranker import assess_language_fit, calculate_overall_score, score_job
+from .ranker import assess_language_fit, blocklist_matches, calculate_overall_score, score_job
 from .runtime import runtime_config
 from .search_job_store import (
     acquire_search_job_lock,
@@ -56,6 +56,19 @@ def search_terms_for_job(search_job: dict, profile: dict) -> list[str]:
     return list(dict.fromkeys(configured)) or search_terms_for_profile(profile)
 
 
+def keyword_rules_for_job(search_job: dict, profile: dict) -> dict[str, dict[str, int]]:
+    """Resolve profile keyword rules with explicit per-job allow/block overrides."""
+    keywords = deepcopy(profile.get("keywords") or {})
+    allowlist = search_job.get("allowlist_terms")
+    blocklist = search_job.get("blocklist_terms")
+    if allowlist is not None:
+        boost = max(0, int(search_job.get("allowlist_boost", 15)))
+        keywords["allowlist"] = {str(term): boost for term in allowlist}
+    if blocklist is not None:
+        keywords["blocklist"] = {str(term): -100 for term in blocklist}
+    return keywords
+
+
 async def run_search_job(search_job_id: int) -> dict:
     search_job = get_search_job(search_job_id, mask_secrets=False)
     if not search_job:
@@ -77,7 +90,12 @@ async def run_search_job(search_job_id: int) -> dict:
         if not search_terms:
             raise ValueError("Search job has no search keywords and its profile provides no fallback keywords")
         sources = _selected_sources(search_job)
-        fetched, provider_errors = await fetch_all_jobs(sources, search_terms, search_job["target_location"])
+        target_location = (
+            profile.get("target_location", "Berlin")
+            if search_job.get("inherit_location")
+            else search_job["target_location"]
+        )
+        fetched, provider_errors = await fetch_all_jobs(sources, search_terms, target_location)
         matches = []
         language_profile = {
             "primary_working_language": "English",
@@ -95,10 +113,17 @@ async def run_search_job(search_job_id: int) -> dict:
             if search_job.get("min_language_score_override") is None
             else int(search_job["min_language_score_override"])
         )
-        location_terms = search_job.get("location_terms") or profile.get("location_terms") or []
+        location_terms = (
+            profile.get("location_terms") or []
+            if search_job.get("inherit_location")
+            else search_job.get("location_terms") or profile.get("location_terms") or []
+        )
+        keyword_rules = keyword_rules_for_job(search_job, profile)
         for source_job in fetched:
             job = deepcopy(source_job)
-            job.score, job.reasons = score_job(job, profile["keywords"], location_terms)
+            if blocklist_matches(job, keyword_rules):
+                continue
+            job.score, job.reasons = score_job(job, keyword_rules, location_terms)
             employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile)
             if not employment_ok:
                 continue

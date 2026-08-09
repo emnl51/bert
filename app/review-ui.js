@@ -17,7 +17,7 @@
     @media(prefers-reduced-motion:reduce){.job-card{transition:none}.job-card:hover{transform:none}}`;document.head.appendChild(st)}
   function fitClass(n){return n>=75?'fit-high':n>=50?'fit-mid':'fit-low'}
 
-  function installOverview(){const section=$('overview');if(!section)return;const wrap=document.createElement('div');wrap.innerHTML=`
+  function installOverview(){const nav=document.querySelector('.nav'),main=document.querySelector('.main');if(!nav||!main||$('jobReview'))return;const button=document.createElement('button');button.dataset.tab='jobReview';button.textContent='Job Review';nav.appendChild(button);const section=document.createElement('section');section.id='jobReview';section.className='section';section.innerHTML=`
     <div class="section-title"><div><h2>Job Review Queue</h2><div class="hint">Scores and learning are calculated independently for the selected search profile.</div></div></div>
     <div class="review-toolbar">
       <div class="field profile-field"><label>Search profile</label><select id="reviewProfile"><option>Loading…</option></select></div>
@@ -25,8 +25,8 @@
       <div class="field"><label>Language requirement</label><select id="reviewLanguage"><option value="preferred">Recommended</option><option value="english_first">English-first</option><option value="german_growth">German-growth</option><option value="stretch">B2 stretch</option><option value="unclear">Unclear</option><option value="all">All</option></select></div>
       <div class="field"><label>Ad language</label><select id="reviewContentLanguage"><option value="profile">Profile preference</option><option value="de">German (DE)</option><option value="en">English (EN)</option><option value="mixed">Mixed (DE/EN)</option><option value="unknown">Unknown</option><option value="all">All</option></select></div>
       <div class="field"><label>Min fit</label><input id="reviewMin" type="number" value="35" min="0" max="100"></div><button class="btn" id="reviewReload">Refresh jobs</button>
-    </div><div id="jobReviewGrid" class="job-grid"></div>`;
-    const oldTitle=[...section.querySelectorAll('.section-title')].find(x=>x.textContent.includes('Latest matches'));const oldTable=oldTitle?.nextElementSibling;if(oldTitle)oldTitle.remove();if(oldTable?.classList.contains('table-wrap'))oldTable.remove();section.appendChild(wrap);
+    </div><div id="jobReviewGrid" class="job-grid"></div>`;main.appendChild(section);button.addEventListener('click',()=>{document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.nav button[data-tab]').forEach(x=>x.classList.remove('active'));section.classList.add('active');button.classList.add('active');if($('pageTitle'))$('pageTitle').textContent='Job Review';window.loadReviewJobs()});
+    const overview=$('overview');const oldTitle=overview?[...overview.querySelectorAll('.section-title')].find(x=>x.textContent.includes('Latest matches')):null;const oldTable=oldTitle?.nextElementSibling;if(oldTitle)oldTitle.remove();if(oldTable?.classList.contains('table-wrap'))oldTable.remove();
     ['reviewDecision','reviewLanguage','reviewContentLanguage','reviewMin'].forEach(id=>$(id).addEventListener('change',window.loadReviewJobs));$('reviewReload').addEventListener('click',window.loadReviewJobs);$('reviewProfile').addEventListener('change',()=>{window.activeProfileId=+$('reviewProfile').value;try{localStorage.setItem('jobtrack-profile',String(window.activeProfileId))}catch(e){};window.loadReviewJobs();if($('learning')?.classList.contains('active'))window.loadLearning()});
   }
 

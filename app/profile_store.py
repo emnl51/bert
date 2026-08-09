@@ -101,6 +101,17 @@ WERKSTUDENT_KEYWORDS = {
         "restaurant": -35,
         "senior director": -20,
     },
+    "allowlist": {},
+    "blocklist": {
+        "software engineer": -100,
+        "developer": -100,
+        "nurse": -100,
+        "pflege": -100,
+        "driver": -100,
+        "fahrer": -100,
+        "restaurant": -100,
+        "senior director": -100,
+    },
 }
 
 FULLTIME_KEYWORDS = {
@@ -153,6 +164,18 @@ FULLTIME_KEYWORDS = {
         "internship": -18,
         "praktikum": -18,
     },
+    "allowlist": {},
+    "blocklist": {
+        "software engineer": -100,
+        "developer": -100,
+        "nurse": -100,
+        "pflege": -100,
+        "driver": -100,
+        "fahrer": -100,
+        "restaurant": -100,
+        "internship": -100,
+        "praktikum": -100,
+    },
 }
 
 
@@ -169,6 +192,23 @@ def ensure_profile_schema() -> None:
             con.execute(
                 'ALTER TABLE search_profiles ADD COLUMN content_languages_json TEXT NOT NULL DEFAULT \'["de","en","mixed"]\''
             )
+        for row in con.execute("SELECT id,keywords_json FROM search_profiles").fetchall():
+            keywords = json.loads(row["keywords_json"] or "{}")
+            changed = False
+            if "allowlist" not in keywords:
+                keywords["allowlist"] = {}
+                changed = True
+            if "blocklist" not in keywords:
+                # Existing negative rules historically reduced the score. Treating the
+                # same terms as hard exclusions preserves the user's intent while the
+                # old penalties remain readable for backwards compatibility.
+                keywords["blocklist"] = {term: -100 for term in (keywords.get("negative") or {})}
+                changed = True
+            if changed:
+                con.execute(
+                    "UPDATE search_profiles SET keywords_json=?,updated_at=? WHERE id=?",
+                    (json.dumps(keywords, ensure_ascii=False), now, row["id"]),
+                )
         if con.execute("SELECT COUNT(*) FROM search_profiles").fetchone()[0] == 0:
             common_locations = json.dumps(
                 [
@@ -242,6 +282,8 @@ def _row_to_profile(row) -> dict[str, Any]:
     p["content_languages"] = json.loads(p.pop("content_languages_json") or "[]")
     p["location_terms"] = json.loads(p.pop("location_terms_json") or "[]")
     p["keywords"] = json.loads(p.pop("keywords_json") or "{}")
+    p["keywords"].setdefault("allowlist", {})
+    p["keywords"].setdefault("blocklist", {})
     return p
 
 

@@ -7,7 +7,7 @@ from app.search_job_store import (
     save_search_job,
 )
 from app.models import Job
-from app.search_job_service import search_terms_for_job
+from app.search_job_service import keyword_rules_for_job, search_terms_for_job
 
 
 def setup_db(tmp_path, monkeypatch):
@@ -99,3 +99,40 @@ def test_empty_search_terms_inherit_selected_profile(tmp_path, monkeypatch):
     p = list_profiles()[0]
     assert search_terms_for_job({"search_terms": []}, p) == search_terms_for_job({}, p)
     assert "werkstudent supply chain" in search_terms_for_job({}, p)
+
+
+def test_job_filter_overrides_are_nullable_normalized_and_isolated(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    profile = list_profiles()[0]
+    inherited_id = save_search_job({"name": "Inherited filters", "profile_id": profile["id"]})
+    custom_id = save_search_job(
+        {
+            "name": "Custom filters",
+            "profile_id": profile["id"],
+            "inherit_location": True,
+            "allowlist_terms": [" Automotive ", "automotive", "IATF 16949"],
+            "blocklist_terms": [" Software Developer ", "software developer"],
+            "allowlist_boost": 18,
+        }
+    )
+    jobs = {job["id"]: job for job in list_search_jobs()}
+    assert jobs[inherited_id]["allowlist_terms"] is None
+    assert jobs[inherited_id]["blocklist_terms"] is None
+    assert jobs[custom_id]["inherit_location"] is True
+    assert jobs[custom_id]["allowlist_terms"] == ["automotive", "iatf 16949"]
+    assert jobs[custom_id]["blocklist_terms"] == ["software developer"]
+    assert jobs[custom_id]["allowlist_boost"] == 18
+
+
+def test_job_filter_rules_inherit_or_replace_profile_values():
+    profile = {"keywords": {"allowlist": {"automotive": 12}, "blocklist": {"developer": -100}}}
+    inherited = keyword_rules_for_job({}, profile)
+    assert inherited["allowlist"] == {"automotive": 12}
+    assert inherited["blocklist"] == {"developer": -100}
+
+    custom = keyword_rules_for_job(
+        {"allowlist_terms": ["quality engineer"], "blocklist_terms": [], "allowlist_boost": 20},
+        profile,
+    )
+    assert custom["allowlist"] == {"quality engineer": 20}
+    assert custom["blocklist"] == {}

@@ -15,7 +15,7 @@ def test_v16_shell_has_mobile_navigation_and_table_cards():
 def test_v16_main_loads_shell_last():
     text = Path("app/v16_main.py").read_text(encoding="utf-8")
     version_text = Path("app/version.py").read_text(encoding="utf-8")
-    assert 'VERSION = "16.6.0"' in version_text
+    assert 'VERSION = "16.7.0"' in version_text
     assert "from .version import VERSION" in text
     assert "app.version = VERSION" in text
     assert '<script src="/ui-shell.js"></script>' in text
