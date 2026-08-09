@@ -1,5 +1,22 @@
 # Changelog
 
+## v17.2.2  — Multi-User Workspaces and Matching Quality
+
+### Added
+
+- Adds an admin-only **System Email** settings page for configuring account activation emails from the web interface.
+- Adds controls for the public base URL, activation-link lifetime, SMTP server, port, username, password, STARTTLS and sender address.
+- Adds a test-email function for validating the saved system SMTP configuration.
+- Keeps existing `SYSTEM_SMTP_*` environment variables as fallback configuration.
+
+### Security
+
+- Encrypts the system SMTP password at rest using `APP_SECRET_KEY`.
+- Never returns the saved SMTP password through the API or displays it in the web interface.
+- Preserves the existing password when the password field is left blank.
+- Restricts system email settings and test operations to administrators.
+- Records system email configuration changes in the audit log.
+
 ## v17.2.0 — Multi-User Workspaces and Matching Quality
 
 ### Added
