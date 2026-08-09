@@ -74,9 +74,7 @@ def test_search_job_notification_settings_are_isolated(tmp_path, monkeypatch):
     assert jobs[b]["notify_email"] is True and jobs[b]["notify_telegram"] is False
 
 
-def test_search_terms_are_isolated_and_normalized_per_search_job(
-    tmp_path, monkeypatch
-):
+def test_search_terms_are_isolated_and_normalized_per_search_job(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
     p = list_profiles()[0]
     job_id = save_search_job(
