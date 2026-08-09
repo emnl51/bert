@@ -1,5 +1,13 @@
 # Changelog
 
+## v16.5.0 — Job-ad Language Detection
+
+- Detects the dominant language of each job ad as German, English, mixed or unknown.
+- Weights the description more strongly than the title and stores a confidence value.
+- Adds profile preferences and dashboard filters for job-ad language without deleting excluded jobs.
+- Supports manual correction and preserves it when a provider refreshes the job.
+- Backfills language metadata for existing jobs during database initialization.
+
 ## v16.4.1 — Hybrid CV Intelligence
 
 ### Added
@@ -31,7 +39,7 @@ Existing `job_intelligence` tables are migrated in place with additional JSON ev
 
 ### Versioning
 
-- Active application version: `16.4.1`
+- Active application version: `16.5.0`
 - `/health` and `/api/v16-health` report the active version
 
 ## v16.3.0 — StepStone Experimental Source

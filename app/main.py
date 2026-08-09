@@ -27,6 +27,7 @@ from .db import (
     save_keyword,
     save_source,
     set_job_decision,
+    set_job_content_language,
     set_setting,
 )
 from .feedback_store import (
@@ -164,11 +165,16 @@ class ProfilePayload(BaseModel):
     show_b2_stretch: bool = True
     hide_german_heavy: bool = True
     prefer_german_growth: bool = True
+    content_languages: list[str] = ["de", "en", "mixed"]
     keywords: dict[str, dict[str, int]] = {}
 
 
 class JobDecisionPayload(BaseModel):
     decision: str
+
+
+class JobContentLanguagePayload(BaseModel):
+    language: str
 
 
 class ApplicationPayload(BaseModel):
@@ -414,6 +420,7 @@ def api_jobs(
     min_score: int = Query(0, ge=0, le=100),
     decision: str = Query("active"),
     language: str = Query("preferred"),
+    content_language: str = Query("profile"),
     profile_id: int | None = Query(None),
     _: str = Depends(require_admin),
 ):
@@ -421,13 +428,15 @@ def api_jobs(
         raise HTTPException(400, "Invalid decision filter")
     if language not in ("all", "preferred", "english_first", "german_growth", "stretch", "german_heavy", "unclear"):
         raise HTTPException(400, "Invalid language filter")
+    if content_language not in ("all", "profile", "de", "en", "mixed", "unknown"):
+        raise HTTPException(400, "Invalid content language filter")
     profile = get_profile(profile_id)
     if not profile:
         raise HTTPException(404, "Profile not found")
     return {
         "profile": profile,
         "jobs": list_jobs_for_profile(
-            profile["id"], limit, min_score, None if decision == "all" else decision, language
+            profile["id"], limit, min_score, None if decision == "all" else decision, language, content_language
         ),
     }
 
@@ -438,6 +447,14 @@ def update_job_decision(job_key: str, payload: JobDecisionPayload, _: str = Depe
         return {"ok": True, **set_job_decision(job_key, payload.decision)}
     except ValueError as exc:
         raise HTTPException(400 if str(exc) == "Invalid decision" else 404, str(exc)) from exc
+
+
+@app.put("/api/jobs/{job_key:path}/content-language")
+def update_job_content_language(job_key: str, payload: JobContentLanguagePayload, _: str = Depends(require_admin)):
+    try:
+        return {"ok": True, **set_job_content_language(job_key, payload.language)}
+    except ValueError as exc:
+        raise HTTPException(400 if str(exc) == "Invalid content language" else 404, str(exc)) from exc
 
 
 @app.post("/api/jobs/{job_key:path}/feedback")

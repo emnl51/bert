@@ -61,6 +61,16 @@ def test_same_job_keeps_independent_profile_scores(tmp_path, monkeypatch):
     assert rows_b[0]["language_label"] == "stretch"
 
 
+def test_job_ad_language_can_be_filtered_independently(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    job = add_job()
+    profile = list_profiles()[0]
+    upsert_profile_score(job, profile["id"])
+
+    assert list_jobs_for_profile(profile["id"], decision="all", language="all", content_language="en")
+    assert not list_jobs_for_profile(profile["id"], decision="all", language="all", content_language="de")
+
+
 def test_learning_is_isolated_by_profile(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
     job = add_job()

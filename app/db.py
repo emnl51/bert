@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 from .config import settings
 from .models import Job
+from .content_language import detect_content_language
 from .secrets import decrypt_secret, encrypt_secret
 
 
@@ -27,7 +28,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     last_seen TEXT NOT NULL,
     notified INTEGER NOT NULL DEFAULT 0,
     decision TEXT NOT NULL DEFAULT 'unreviewed',
-    decision_at TEXT
+    decision_at TEXT,
+    content_language TEXT NOT NULL DEFAULT 'unknown',
+    content_language_confidence REAL NOT NULL DEFAULT 0,
+    content_language_source TEXT NOT NULL DEFAULT 'detected'
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_score ON jobs(score DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen ON jobs(first_seen DESC);
@@ -191,6 +195,21 @@ def init_db() -> None:
             con.execute("ALTER TABLE jobs ADD COLUMN decision TEXT NOT NULL DEFAULT 'unreviewed'")
         if "decision_at" not in job_columns:
             con.execute("ALTER TABLE jobs ADD COLUMN decision_at TEXT")
+        if "content_language" not in job_columns:
+            con.execute("ALTER TABLE jobs ADD COLUMN content_language TEXT NOT NULL DEFAULT 'unknown'")
+        if "content_language_confidence" not in job_columns:
+            con.execute("ALTER TABLE jobs ADD COLUMN content_language_confidence REAL NOT NULL DEFAULT 0")
+        if "content_language_source" not in job_columns:
+            con.execute("ALTER TABLE jobs ADD COLUMN content_language_source TEXT NOT NULL DEFAULT 'detected'")
+        rows = con.execute(
+            "SELECT job_key,title,description FROM jobs WHERE content_language='unknown' AND content_language_source='detected'"
+        ).fetchall()
+        for row in rows:
+            detected = detect_content_language(row["title"], row["description"])
+            con.execute(
+                "UPDATE jobs SET content_language=?,content_language_confidence=? WHERE job_key=?",
+                (detected.code, detected.confidence, row["job_key"]),
+            )
         now = _now()
         for key, value in DEFAULT_SETTINGS.items():
             con.execute(
@@ -399,12 +418,20 @@ def active_keyword_map() -> dict[str, dict[str, int]]:
 
 def upsert_job(job: Job) -> bool:
     now = job.seen_at
+    detected = detect_content_language(job.title, job.description)
     with connection() as con:
-        existing = con.execute("SELECT job_key FROM jobs WHERE job_key=?", (job.key,)).fetchone()
+        existing = con.execute(
+            "SELECT job_key,content_language_source FROM jobs WHERE job_key=?", (job.key,)
+        ).fetchone()
         if existing:
+            language_sql = ""
+            language_params = ()
+            if existing["content_language_source"] != "manual":
+                language_sql = ", content_language=?, content_language_confidence=?, content_language_source='detected'"
+                language_params = (detected.code, detected.confidence)
             con.execute(
-                """UPDATE jobs SET title=?, company=?, location=?, url=?, description=?, created_at=?,
-                   remote=?, score=?, reasons_json=?, last_seen=? WHERE job_key=?""",
+                f"""UPDATE jobs SET title=?, company=?, location=?, url=?, description=?, created_at=?,
+                   remote=?, score=?, reasons_json=?, last_seen=?{language_sql} WHERE job_key=?""",
                 (
                     job.title,
                     job.company,
@@ -416,14 +443,16 @@ def upsert_job(job: Job) -> bool:
                     job.score,
                     json.dumps(job.reasons, ensure_ascii=False),
                     now,
+                    *language_params,
                     job.key,
                 ),
             )
             return False
         con.execute(
             """INSERT INTO jobs(job_key, source, external_id, title, company, location, url,
-               description, created_at, remote, score, reasons_json, first_seen, last_seen, notified)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+               description, created_at, remote, score, reasons_json, first_seen, last_seen, notified,
+               content_language, content_language_confidence, content_language_source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'detected')""",
             (
                 job.key,
                 job.source,
@@ -439,9 +468,35 @@ def upsert_job(job: Job) -> bool:
                 json.dumps(job.reasons, ensure_ascii=False),
                 now,
                 now,
+                detected.code,
+                detected.confidence,
             ),
         )
         return True
+
+
+def set_job_content_language(job_key: str, code: str) -> dict[str, Any]:
+    if code not in ("de", "en", "mixed", "unknown", "auto"):
+        raise ValueError("Invalid content language")
+    with connection() as con:
+        row = con.execute("SELECT title,description FROM jobs WHERE job_key=?", (job_key,)).fetchone()
+        if not row:
+            raise ValueError("Job not found")
+        if code == "auto":
+            detected = detect_content_language(row["title"], row["description"])
+            code, confidence, source = detected.code, detected.confidence, "detected"
+        else:
+            confidence, source = 1.0, "manual"
+        con.execute(
+            "UPDATE jobs SET content_language=?,content_language_confidence=?,content_language_source=? WHERE job_key=?",
+            (code, confidence, source, job_key),
+        )
+    return {
+        "job_key": job_key,
+        "content_language": code,
+        "content_language_confidence": confidence,
+        "content_language_source": source,
+    }
 
 
 def mark_notified(keys: list[str]) -> None:
