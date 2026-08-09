@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS search_jobs (
     interval_hours INTEGER NOT NULL DEFAULT 12,
     min_score_override INTEGER,
     min_language_score_override INTEGER,
+    min_cv_match INTEGER NOT NULL DEFAULT 58,
     max_results INTEGER NOT NULL DEFAULT 20,
     notify_telegram INTEGER NOT NULL DEFAULT 0,
     notify_email INTEGER NOT NULL DEFAULT 0,
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS search_job_runs (
     matches INTEGER NOT NULL DEFAULT 0,
     provider_errors_json TEXT NOT NULL DEFAULT '[]',
     notification_channels_json TEXT NOT NULL DEFAULT '[]',
+    filter_counts_json TEXT NOT NULL DEFAULT '{}',
     error TEXT NOT NULL DEFAULT '',
     FOREIGN KEY(search_job_id) REFERENCES search_jobs(id) ON DELETE CASCADE
 );
@@ -113,6 +115,7 @@ def _migrate_search_job_ownership(con) -> None:
             source_ids_json TEXT NOT NULL DEFAULT '[]',frequency TEXT NOT NULL DEFAULT 'weekly',
             day_of_week TEXT NOT NULL DEFAULT 'mon',hour INTEGER NOT NULL DEFAULT 8,minute INTEGER NOT NULL DEFAULT 0,
             interval_hours INTEGER NOT NULL DEFAULT 12,min_score_override INTEGER,min_language_score_override INTEGER,
+            min_cv_match INTEGER NOT NULL DEFAULT 58,
             max_results INTEGER NOT NULL DEFAULT 20,notify_telegram INTEGER NOT NULL DEFAULT 0,
             notify_email INTEGER NOT NULL DEFAULT 0,notification_json TEXT NOT NULL DEFAULT '{}',
             secrets_json TEXT NOT NULL DEFAULT '{}',last_run_at TEXT,last_run_status TEXT,
@@ -124,13 +127,13 @@ def _migrate_search_job_ownership(con) -> None:
             """INSERT INTO search_jobs_v18
             (id,user_id,name,enabled,profile_id,inherit_location,target_location,location_terms_json,
              search_terms_json,allowlist_terms_json,blocklist_terms_json,allowlist_boost,source_ids_json,
-             frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,
+             frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,min_cv_match,
              max_results,notify_telegram,notify_email,notification_json,secrets_json,last_run_at,last_run_status,
              last_match_count,created_at,updated_at)
             SELECT id,NULL,name,enabled,profile_id,COALESCE(inherit_location,0),target_location,location_terms_json,
              COALESCE(search_terms_json,'[]'),allowlist_terms_json,blocklist_terms_json,COALESCE(allowlist_boost,15),
              source_ids_json,frequency,day_of_week,hour,minute,interval_hours,min_score_override,
-             min_language_score_override,max_results,notify_telegram,notify_email,notification_json,secrets_json,
+             min_language_score_override,58,max_results,notify_telegram,notify_email,notification_json,secrets_json,
              last_run_at,last_run_status,last_match_count,created_at,updated_at FROM search_jobs"""
         )
         con.execute("DROP TABLE search_jobs")
@@ -163,6 +166,11 @@ def ensure_search_job_schema(user_id: int | None = None) -> None:
             con.execute("ALTER TABLE search_jobs ADD COLUMN blocklist_terms_json TEXT")
         if "allowlist_boost" not in columns:
             con.execute("ALTER TABLE search_jobs ADD COLUMN allowlist_boost INTEGER NOT NULL DEFAULT 15")
+        if "min_cv_match" not in columns:
+            con.execute("ALTER TABLE search_jobs ADD COLUMN min_cv_match INTEGER NOT NULL DEFAULT 58")
+        run_columns = {row[1] for row in con.execute("PRAGMA table_info(search_job_runs)").fetchall()}
+        if "filter_counts_json" not in run_columns:
+            con.execute("ALTER TABLE search_job_runs ADD COLUMN filter_counts_json TEXT NOT NULL DEFAULT '{}'")
         if con.execute("SELECT COUNT(*) FROM search_jobs WHERE user_id IS ?", (user_id,)).fetchone()[0] == 0 and p:
             now = _now()
             con.execute(
@@ -299,6 +307,7 @@ def save_search_job(data: dict[str, Any], job_id: int | None = None, user_id: in
             "interval_hours": int(data.get("interval_hours", 12)),
             "min_score_override": data.get("min_score_override"),
             "min_language_score_override": data.get("min_language_score_override"),
+            "min_cv_match": max(0, min(100, int(data.get("min_cv_match", 58)))),
             "max_results": int(data.get("max_results", 20)),
             "notify_telegram": int(bool(data.get("notify_telegram", False))),
             "notify_email": int(bool(data.get("notify_email", False))),
@@ -308,13 +317,13 @@ def save_search_job(data: dict[str, Any], job_id: int | None = None, user_id: in
         }
         if job_id:
             con.execute(
-                """UPDATE search_jobs SET name=:name,enabled=:enabled,profile_id=:profile_id,inherit_location=:inherit_location,target_location=:target_location,location_terms_json=:location_terms_json,search_terms_json=:search_terms_json,allowlist_terms_json=:allowlist_terms_json,blocklist_terms_json=:blocklist_terms_json,allowlist_boost=:allowlist_boost,source_ids_json=:source_ids_json,frequency=:frequency,day_of_week=:day_of_week,hour=:hour,minute=:minute,interval_hours=:interval_hours,min_score_override=:min_score_override,min_language_score_override=:min_language_score_override,max_results=:max_results,notify_telegram=:notify_telegram,notify_email=:notify_email,notification_json=:notification_json,secrets_json=:secrets_json,updated_at=:updated_at WHERE id=:id AND user_id IS :user_id""",
+                """UPDATE search_jobs SET name=:name,enabled=:enabled,profile_id=:profile_id,inherit_location=:inherit_location,target_location=:target_location,location_terms_json=:location_terms_json,search_terms_json=:search_terms_json,allowlist_terms_json=:allowlist_terms_json,blocklist_terms_json=:blocklist_terms_json,allowlist_boost=:allowlist_boost,source_ids_json=:source_ids_json,frequency=:frequency,day_of_week=:day_of_week,hour=:hour,minute=:minute,interval_hours=:interval_hours,min_score_override=:min_score_override,min_language_score_override=:min_language_score_override,min_cv_match=:min_cv_match,max_results=:max_results,notify_telegram=:notify_telegram,notify_email=:notify_email,notification_json=:notification_json,secrets_json=:secrets_json,updated_at=:updated_at WHERE id=:id AND user_id IS :user_id""",
                 {**vals, "id": job_id},
             )
             return job_id
         cur = con.execute(
-            """INSERT INTO search_jobs(user_id,name,enabled,profile_id,inherit_location,target_location,location_terms_json,search_terms_json,allowlist_terms_json,blocklist_terms_json,allowlist_boost,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,max_results,notify_telegram,notify_email,notification_json,secrets_json,created_at,updated_at)
-                           VALUES(:user_id,:name,:enabled,:profile_id,:inherit_location,:target_location,:location_terms_json,:search_terms_json,:allowlist_terms_json,:blocklist_terms_json,:allowlist_boost,:source_ids_json,:frequency,:day_of_week,:hour,:minute,:interval_hours,:min_score_override,:min_language_score_override,:max_results,:notify_telegram,:notify_email,:notification_json,:secrets_json,:created_at,:updated_at)""",
+            """INSERT INTO search_jobs(user_id,name,enabled,profile_id,inherit_location,target_location,location_terms_json,search_terms_json,allowlist_terms_json,blocklist_terms_json,allowlist_boost,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,min_cv_match,max_results,notify_telegram,notify_email,notification_json,secrets_json,created_at,updated_at)
+                           VALUES(:user_id,:name,:enabled,:profile_id,:inherit_location,:target_location,:location_terms_json,:search_terms_json,:allowlist_terms_json,:blocklist_terms_json,:allowlist_boost,:source_ids_json,:frequency,:day_of_week,:hour,:minute,:interval_hours,:min_score_override,:min_language_score_override,:min_cv_match,:max_results,:notify_telegram,:notify_email,:notification_json,:secrets_json,:created_at,:updated_at)""",
             {**vals, "created_at": now},
         )
         return int(cur.lastrowid)
@@ -380,12 +389,13 @@ def finish_search_job_run(
     matches: int = 0,
     provider_errors=None,
     channels=None,
+    filter_counts=None,
     error: str = "",
 ) -> None:
     now = _now()
     with connection() as con:
         con.execute(
-            """UPDATE search_job_runs SET finished_at=?,status=?,fetched=?,matches=?,provider_errors_json=?,notification_channels_json=?,error=? WHERE id=?""",
+            """UPDATE search_job_runs SET finished_at=?,status=?,fetched=?,matches=?,provider_errors_json=?,notification_channels_json=?,filter_counts_json=?,error=? WHERE id=?""",
             (
                 now,
                 status,
@@ -393,6 +403,7 @@ def finish_search_job_run(
                 matches,
                 json.dumps(provider_errors or []),
                 json.dumps(channels or []),
+                json.dumps(filter_counts or {}),
                 error,
                 run_id,
             ),
@@ -423,5 +434,6 @@ def list_search_job_runs(
         d = dict(r)
         d["provider_errors"] = json.loads(d.pop("provider_errors_json") or "[]")
         d["notification_channels"] = json.loads(d.pop("notification_channels_json") or "[]")
+        d["filter_counts"] = json.loads(d.pop("filter_counts_json") or "{}")
         out.append(d)
     return out

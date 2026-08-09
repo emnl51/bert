@@ -9,6 +9,8 @@ def test_intelligence_ui_exposes_hybrid_scores_and_evidence():
     assert "Re-analyze" in text
     assert "reanalyzeCv" in text
     assert "intel-breakdown" in text
+    assert "preferred" in text
+    assert "required" in text
 
 
 def test_intelligence_engine_contains_prompt_injection_and_evidence_guards():

@@ -8,6 +8,7 @@ import httpx
 
 from .candidate_store import get_candidate
 from .db import connection, get_setting
+from .text_match import contains_phrase, find_phrase, first_phrase, normalize_text, phrase_pattern
 
 
 def _tenant_setting(key: str, default: str, user_id=None) -> str:
@@ -188,13 +189,52 @@ RESPONSIBILITY_GROUPS = {
     "project leadership": ("project lead", "project management", "lead projects", "leadership"),
 }
 
+ROLE_FAMILIES = {
+    "process engineering": (
+        "process engineer",
+        "process engineering",
+        "prozessingenieur",
+        "prozessingenieurin",
+        "prozesstechnik",
+    ),
+    "quality engineering": (
+        "quality engineer",
+        "quality engineering",
+        "qualitätsingenieur",
+        "qualitaetsingenieur",
+        "quality assurance engineer",
+    ),
+    "production planning": (
+        "production planner",
+        "production planning",
+        "produktionsplaner",
+        "produktionsplanung",
+        "arbeitsvorbereitung",
+    ),
+    "manufacturing engineering": (
+        "manufacturing engineer",
+        "manufacturing engineering",
+        "fertigungsingenieur",
+        "industrial engineer",
+    ),
+    "supply chain": ("supply chain", "lieferkette", "material planning", "material planner"),
+    "procurement": ("procurement", "purchasing", "buyer", "einkauf", "einkäufer", "einkaeufer"),
+    "paint/coating": (
+        "paint engineer",
+        "painting engineer",
+        "coating engineer",
+        "lackieringenieur",
+        "lackierung",
+    ),
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _norm(value: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"[^a-zA-ZäöüÄÖÜß0-9+#./ -]+", " ", str(value or "")).lower()).strip()
+    return re.sub(r"[^\w+#./ -]+", " ", normalize_text(value)).strip()
 
 
 def _tokens(text: str) -> set[str]:
@@ -202,9 +242,63 @@ def _tokens(text: str) -> set[str]:
 
 
 def _has(text: str, aliases: tuple[str, ...]) -> str | None:
-    normalized = _norm(text)
+    return first_phrase(text, aliases)
+
+
+OPTIONAL_SIGNALS = (
+    "a plus",
+    "is a plus",
+    "preferred",
+    "nice to have",
+    "advantage",
+    "optional",
+    "wünschenswert",
+    "wuenschenswert",
+    "von vorteil",
+)
+
+NEGATION_PREFIXES = (
+    "no",
+    "not",
+    "without",
+    "lack of",
+    "lacking",
+    "kein",
+    "keine",
+    "keinen",
+    "ohne",
+)
+
+
+def _clause(text: str, phrase: str, radius: int = 90) -> str:
+    normalized = normalize_text(text)
+    match = find_phrase(normalized, phrase)
+    if not match:
+        return ""
+    left = max(normalized.rfind(mark, 0, match.start()) for mark in (".", ";", "\n", "•")) + 1
+    right_candidates = [normalized.find(mark, match.end()) for mark in (".", ";", "\n", "•")]
+    right_candidates = [value for value in right_candidates if value >= 0]
+    right = min(right_candidates) if right_candidates else min(len(normalized), match.end() + radius)
+    return normalized[max(left, match.start() - radius) : right]
+
+
+def _is_optional(text: str, phrase: str) -> bool:
+    clause = _clause(text, phrase)
+    return any(contains_phrase(clause, signal) for signal in OPTIONAL_SIGNALS)
+
+
+def _affirmed_hit(text: str, aliases: tuple[str, ...]) -> str | None:
+    normalized = normalize_text(text)
     for alias in aliases:
-        if _norm(alias) in normalized:
+        pattern = phrase_pattern(alias)
+        if not pattern:
+            continue
+        for match in pattern.finditer(normalized):
+            prefix = normalized[max(0, match.start() - 32) : match.start()]
+            if any(
+                re.search(rf"(?:^|\s){re.escape(signal)}(?:\s+\w+){{0,2}}\s*$", prefix) for signal in NEGATION_PREFIXES
+            ):
+                continue
             return alias
     return None
 
@@ -298,6 +392,10 @@ def _role_requirement(candidate: dict, job: dict) -> tuple[dict, dict]:
         if overlap > best_overlap:
             best_overlap = overlap
             best_target = target
+        for family, aliases in ROLE_FAMILIES.items():
+            if _has(title, aliases) and _has(target, aliases) and best_overlap < 1.0:
+                best_overlap = 1.0
+                best_target = f"{target} ({family})"
     if best_overlap >= 0.65:
         status, value = "match", 1.0
     elif best_overlap >= 0.30:
@@ -327,7 +425,7 @@ def _extract_term_requirements(job_text: str) -> list[dict]:
                         "id": f"{category}:{canonical}",
                         "category": category,
                         "term": canonical,
-                        "required": True,
+                        "required": not _is_optional(job_text, hit),
                         "job_evidence": _excerpt(job_text, hit),
                     }
                 )
@@ -339,7 +437,7 @@ def _extract_term_requirements(job_text: str) -> list[dict]:
                     "id": f"responsibilities:{canonical}",
                     "category": "responsibilities",
                     "term": canonical,
-                    "required": True,
+                    "required": not _is_optional(job_text, hit),
                     "job_evidence": _excerpt(job_text, hit),
                 }
             )
@@ -349,12 +447,13 @@ def _extract_term_requirements(job_text: str) -> list[dict]:
 def _term_evidence(requirement: dict, candidate_text: str) -> dict:
     category, term = requirement["category"], requirement["term"]
     aliases = TERM_GROUPS.get(category, {}).get(term) or RESPONSIBILITY_GROUPS.get(term) or (term,)
-    hit = _has(candidate_text, aliases)
+    hit = _affirmed_hit(candidate_text, aliases)
     if hit:
         return {
             "requirement_id": requirement["id"],
             "category": category,
             "term": term,
+            "required": requirement.get("required", True),
             "status": "match",
             "evidence": _excerpt(candidate_text, hit),
             "confidence": 1.0,
@@ -367,6 +466,7 @@ def _term_evidence(requirement: dict, candidate_text: str) -> dict:
             "requirement_id": requirement["id"],
             "category": category,
             "term": term,
+            "required": requirement.get("required", True),
             "status": "partial",
             "evidence": f"Partial terminology overlap: {', '.join(sorted(candidate_tokens & alias_tokens))}",
             "confidence": 0.5,
@@ -375,6 +475,7 @@ def _term_evidence(requirement: dict, candidate_text: str) -> dict:
         "requirement_id": requirement["id"],
         "category": category,
         "term": term,
+        "required": requirement.get("required", True),
         "status": "missing",
         "evidence": "No supporting CV evidence found",
         "confidence": 0.0,
@@ -413,7 +514,7 @@ def _experience_evidence(job_text: str, candidate_text: str) -> tuple[list[dict]
 
 
 def _category_score(evidence: list[dict], category: str) -> int:
-    rows = [x for x in evidence if x["category"] == category]
+    rows = [x for x in evidence if x["category"] == category and (x.get("required", True) or x["status"] != "missing")]
     if not rows:
         return 50
     value = sum(float(x.get("confidence", 0)) for x in rows) / len(rows)
@@ -438,7 +539,11 @@ def _deterministic(candidate: dict, job: dict) -> dict[str, Any]:
     missing = [e["term"] for e in evidence if e["status"] == "missing"]
     strengths = [f"Evidence match: {term}" for term in matched[:8]]
     strengths.extend(f"Partial/transferable: {term}" for term in partial[:3])
-    gaps = [f"No CV evidence: {term}" for term in missing[:8]]
+    gaps = [
+        f"No CV evidence: {item['term']}"
+        for item in evidence
+        if item["status"] == "missing" and item.get("required", True)
+    ][:8]
     risks: list[str] = []
     normalized_job = _norm(job_text)
     if any(

@@ -1,13 +1,13 @@
-import re
 from .models import Job
+from .text_match import contains_affirmed_phrase, contains_phrase, normalize_text
 
 
 def _normalise(value: str) -> str:
-    return re.sub(r"\s+", " ", (value or "").lower()).strip()
+    return normalize_text(value)
 
 
 def _has_any(text: str, phrases: tuple[str, ...]) -> bool:
-    return any(phrase in text for phrase in phrases)
+    return any(contains_phrase(text, phrase) for phrase in phrases)
 
 
 def blocklist_matches(job: Job, keywords: dict[str, dict[str, int]]) -> list[str]:
@@ -16,7 +16,7 @@ def blocklist_matches(job: Job, keywords: dict[str, dict[str, int]]) -> list[str
     matches = []
     for value in (keywords.get("blocklist") or {}).keys():
         term = _normalise(str(value))
-        if term and term in body and term not in matches:
+        if term and contains_affirmed_phrase(body, term) and term not in matches:
             matches.append(term)
     return matches
 
@@ -30,37 +30,37 @@ def score_job(job: Job, keywords: dict[str, dict[str, int]], location_terms: lis
     reasons: list[str] = []
 
     for term, weight in keywords.get("title", {}).items():
-        if term in title:
+        if contains_affirmed_phrase(title, term):
             score += weight
             reasons.append(f"title: {term}")
     for term, weight in keywords.get("format", {}).items():
-        if term in body:
+        if contains_affirmed_phrase(body, term):
             score += weight
             reasons.append(f"format: {term}")
     for term, weight in keywords.get("skill", {}).items():
-        if term in body:
+        if contains_affirmed_phrase(body, term):
             score += weight
             if len(reasons) < 8:
                 reasons.append(f"skill: {term}")
     for value, weight in (keywords.get("allowlist") or {}).items():
         term = _normalise(str(value))
         boost = max(0, int(weight))
-        if term and term in body and boost:
+        if term and contains_affirmed_phrase(body, term) and boost:
             score += boost
             if len(reasons) < 8:
                 reasons.append(f"allowlist: {term}")
     for term, penalty in keywords.get("negative", {}).items():
-        if term in title:
+        if contains_affirmed_phrase(title, term):
             score += penalty
             reasons.append(f"penalty: {term}")
 
-    if location_terms and any(area in location for area in location_terms):
+    if location_terms and any(contains_phrase(location, area) for area in location_terms):
         score += 12
         reasons.append("target area")
     if job.remote:
         score += 3
     format_terms = keywords.get("format", {})
-    if format_terms and not any(term in body for term in format_terms):
+    if format_terms and not any(contains_phrase(body, term) for term in format_terms):
         score -= 8
     return min(max(score, 0), 100), reasons
 
