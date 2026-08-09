@@ -270,8 +270,8 @@ Run a tagged image:
 git clone https://github.com/emnl51/jobtrack.git
 cd jobtrack
 cp .env.example .env
-JOBTRACK_IMAGE_TAG=v16.4.0 docker compose -f docker-compose.ghcr.yml pull
-JOBTRACK_IMAGE_TAG=v16.4.0 docker compose -f docker-compose.ghcr.yml up -d
+JOBTRACK_IMAGE_TAG=v16.4.1 docker compose -f docker-compose.ghcr.yml pull
+JOBTRACK_IMAGE_TAG=v16.4.1 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 Or follow `latest`:
@@ -305,7 +305,7 @@ docker compose exec tracker python -c "import app.v16_main; print(app.v16_main.a
 Expected current main version:
 
 ```text
-16.4.0
+16.4.1
 ```
 
 ## Development and CI
@@ -347,6 +347,8 @@ app.v16_main:app
 - AI cannot promote unsupported requirements to matched evidence.
 - JobSpy and StepStone are experimental; use conservative limits and timeouts.
 - Do not expose the admin panel directly to the public internet without HTTPS and appropriate network controls.
+- JobTrack now refuses to start while `ADMIN_PASSWORD` or `APP_SECRET_KEY` still uses a published placeholder value.
+- For an internet-facing deployment, place the app behind an HTTPS reverse proxy. `Caddyfile.example` includes TLS, security headers and a rate-limit policy (the rate-limit directive requires a compatible Caddy build/plugin).
 
 ## License
 

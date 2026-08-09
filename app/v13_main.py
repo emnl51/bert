@@ -23,14 +23,18 @@ async def v13_lifespan(application):
 
 
 app.router.lifespan_context = v13_lifespan
-app.version = '13.0.0'
+app.version = "13.0.0"
 
-app.router.routes[:] = [r for r in app.router.routes if not (getattr(r, 'path', None) == '/' and 'GET' in (getattr(r, 'methods', set()) or set()))]
+app.router.routes[:] = [
+    r
+    for r in app.router.routes
+    if not (getattr(r, "path", None) == "/" and "GET" in (getattr(r, "methods", set()) or set()))
+]
 
 
-@app.get('/', response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, _: str = Depends(require_admin)):
-    html = Path('app/templates/index.html').read_text(encoding='utf-8').replace('{{ app_name }}', settings.app_name)
+    html = Path("app/templates/index.html").read_text(encoding="utf-8").replace("{{ app_name }}", settings.app_name)
     scripts = (
         '<script src="/language-ui.js"></script>'
         '<script src="/source-ui.js"></script>'
@@ -42,24 +46,26 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
         '<script src="/jobspy-ui.js"></script>'
         '<script src="/source-analytics-ui.js"></script>'
     )
-    return HTMLResponse(html.replace('</body>', scripts + '</body>'))
+    return HTMLResponse(html.replace("</body>", scripts + "</body>"))
 
 
-@app.get('/source-analytics-ui.js')
+@app.get("/source-analytics-ui.js")
 def source_analytics_ui(_: str = Depends(require_admin)):
-    return Response(Path('app/source-analytics-ui.js').read_text(encoding='utf-8'), media_type='application/javascript')
+    return Response(Path("app/source-analytics-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
-@app.get('/api/source-analytics')
+@app.get("/api/source-analytics")
 def source_analytics(last_runs: int = Query(20, ge=1, le=200), _: str = Depends(require_admin)):
-    return {'summary': source_quality_summary(last_runs)}
+    return {"summary": source_quality_summary(last_runs)}
 
 
-@app.get('/api/source-analytics/runs')
-def source_analytics_runs(run_id: int | None = None, limit: int = Query(200, ge=1, le=1000), _: str = Depends(require_admin)):
-    return {'rows': list_source_run_stats(run_id=run_id, limit=limit)}
+@app.get("/api/source-analytics/runs")
+def source_analytics_runs(
+    run_id: int | None = None, limit: int = Query(200, ge=1, le=1000), _: str = Depends(require_admin)
+):
+    return {"rows": list_source_run_stats(run_id=run_id, limit=limit)}
 
 
-@app.get('/api/v13-health')
+@app.get("/api/v13-health")
 def v13_health(_: str = Depends(require_admin)):
-    return {'status': 'ok', 'version': '13.0.0', 'source_analytics': True}
+    return {"status": "ok", "version": "13.0.0", "source_analytics": True}

@@ -19,7 +19,13 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint Python
+        run: ruff check app tests
+
+      - name: Check Python formatting
+        run: ruff format --check app tests
 
       - name: Compile Python
         run: python -m compileall -q app tests
@@ -30,8 +36,53 @@ jobs:
             node --check "$file"
           done
 
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           APP_SECRET_KEY: ci-test-secret-key
           ADMIN_PASSWORD: ci-test-admin-password
-        run: python -m pytest -q
+        run: python -m pytest --cov --cov-report=term-missing -q
+
+      - name: Audit Python dependencies
+        # python-jobspy currently constrains markdownify below its fixed release.
+        # Remove the exception as soon as upstream relaxes that dependency.
+        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2026-1604
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          docker compose -f docker-compose.ghcr.yml config --quiet
+      - name: Build and smoke test image
+        run: |
+          docker build -t jobtrack:ci .
+          docker run -d --name jobtrack-ci -p 8080:8080 \
+            -e ADMIN_PASSWORD=ci-test-admin-password \
+            -e APP_SECRET_KEY=ci-test-secret-key \
+            jobtrack:ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs jobtrack-ci
+          exit 1
+
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+      - name: Filesystem vulnerability scan
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
