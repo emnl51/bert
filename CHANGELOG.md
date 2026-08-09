@@ -1,6 +1,6 @@
 # Changelog
 
-## v16.4.0 — Hybrid CV Intelligence
+## v16.4.1 — Hybrid CV Intelligence
 
 ### Added
 
@@ -31,7 +31,7 @@ Existing `job_intelligence` tables are migrated in place with additional JSON ev
 
 ### Versioning
 
-- Active application version: `16.4.0`
+- Active application version: `16.4.1`
 - `/health` and `/api/v16-health` report the active version
 
 ## v16.3.0 — StepStone Experimental Source

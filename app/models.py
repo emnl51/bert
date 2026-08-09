@@ -10,19 +10,19 @@ class Job:
     company: str
     location: str
     url: str
-    description: str = ''
-    created_at: str = ''
+    description: str = ""
+    created_at: str = ""
     remote: bool = False
     score: int = 0
     reasons: list[str] = field(default_factory=list)
     language_score: int = 55
     overall_score: int = 0
-    language_label: str = 'unclear'
+    language_label: str = "unclear"
     language_reasons: list[str] = field(default_factory=list)
 
     @property
     def key(self) -> str:
-        return f'{self.source}:{self.external_id}'
+        return f"{self.source}:{self.external_id}"
 
     @property
     def seen_at(self) -> str:
