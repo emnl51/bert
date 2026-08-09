@@ -276,8 +276,8 @@ Run a tagged image:
 git clone https://github.com/whojan/bert.git
 cd bert
 cp .env.example .env
-BERT_IMAGE_TAG=v16.5.0 docker compose -f docker-compose.ghcr.yml pull
-BERT_IMAGE_TAG=v16.5.0 docker compose -f docker-compose.ghcr.yml up -d
+BERT_IMAGE_TAG=17.0.1 docker compose -f docker-compose.ghcr.yml pull
+BERT_IMAGE_TAG=17.0.1 docker compose -f docker-compose.ghcr.yml up -d
 ```
 
 Or follow `latest`:
@@ -311,7 +311,7 @@ docker compose exec bert python -c "import app.v16_main; print(app.v16_main.app.
 Expected current main version:
 
 ```text
-16.7.0
+17.0.1
 ```
 
 ### Manage updates from the web UI

@@ -42,6 +42,24 @@ jobs:
       - name: Install test dependencies
         run: pip install -r requirements-dev.txt
 
+      - name: Verify release version
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import runpy
+
+          version = runpy.run_path("app/version.py")["VERSION"]
+          release_tag = os.environ["RELEASE_TAG"].removeprefix("v")
+          if release_tag != version:
+              raise SystemExit(
+                  f"Release tag {release_tag!r} does not match application version {version!r}"
+              )
+          print(f"Release version verified: {version}")
+          PY
+
       - name: Compile Python
         run: python -m compileall -q app tests
 

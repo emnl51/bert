@@ -12,6 +12,16 @@ def test_release_workflow_tests_before_ghcr_publish():
     assert text.index("Run tests") < text.index("Build and push image")
 
 
+def test_release_workflow_rejects_tag_and_application_version_mismatch():
+    text = Path(".github/workflows/publish-container.yml").read_text(encoding="utf-8")
+    assert "Verify release version" in text
+    assert "RELEASE_TAG: ${{ github.event.release.tag_name }}" in text
+    assert 'runpy.run_path("app/version.py")["VERSION"]' in text
+    assert '.removeprefix("v")' in text
+    assert "does not match application version" in text
+    assert text.index("Verify release version") < text.index("Run tests")
+
+
 def test_ghcr_compose_uses_release_image_persistent_data_and_ollama_host():
     text = Path("docker-compose.ghcr.yml").read_text(encoding="utf-8")
     assert "ghcr.io/whojan/bert:${BERT_IMAGE_TAG:-latest}" in text
