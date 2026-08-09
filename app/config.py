@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "change-me"
 
+    # Optional host-side updater. The updater owns Docker/Git privileges; the
+    # web container can only reach its narrow API through a Unix socket.
+    update_agent_socket: str = ""
+    update_agent_token: str = ""
+    update_agent_timeout_seconds: float = 5.0
+
     timezone: str = "Europe/Berlin"
     schedule_frequency: str = "weekly"
     schedule_day: str = "mon"

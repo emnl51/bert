@@ -20,6 +20,7 @@ JobTrack combines structured job APIs and ATS feeds with optional experimental j
 - Source funnel analytics and quality metrics
 - In-app log viewer with secret redaction
 - Database backup, scoped reset and factory reset
+- In-app release/commit tracking and guarded server updates through an optional host agent
 - SQLite persistence in the Docker `/data` volume
 - Release images published to GitHub Container Registry (GHCR)
 
@@ -306,8 +307,14 @@ docker compose exec tracker python -c "import app.v16_main; print(app.v16_main.a
 Expected current main version:
 
 ```text
-16.5.0
+16.6.0
 ```
+
+### Manage updates from the web UI
+
+The optional **Updates** screen compares the installed Git commit with the configured remote branch, shows deployment progress and recent updater logs, and can apply a safe fast-forward update.
+
+Docker and Git privileges remain in a fixed-purpose host service; the web container never receives the Docker socket. The host agent creates a SQLite backup, rebuilds only the tracker service and verifies `/health`. See [`deploy/README.md`](deploy/README.md) for the one-time installation and server Compose overlay.
 
 ## Development and CI
 

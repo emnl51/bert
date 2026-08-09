@@ -3,7 +3,7 @@
   const NAV = {
     overview:['⌂','Overview'], applications:['✓','Applications'], search:['⌕','Search & Schedule'],
     sources:['◫','Sources'], keywords:['#','Keywords'], notifications:['↗','Notifications'],
-    runs:['↻','Run History'], database:['DB','Database'], logs:['>_','Logs']
+    runs:['↻','Run History'], database:['DB','Database'], logs:['>_','Logs'], updates:['↑','Updates']
   };
 
   function installStyles(){

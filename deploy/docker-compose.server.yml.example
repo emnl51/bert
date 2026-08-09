@@ -1,0 +1,13 @@
+services:
+  tracker:
+    ports: !reset []
+    expose:
+      - "8080"
+    networks:
+      - default
+      - proxy
+
+networks:
+  proxy:
+    external: true
+    name: proxy

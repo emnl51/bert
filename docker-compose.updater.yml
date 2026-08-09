@@ -1,0 +1,4 @@
+services:
+  tracker:
+    volumes:
+      - /run/jobtrack-updater:/run/jobtrack-updater:ro
