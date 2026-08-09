@@ -50,6 +50,12 @@ def _selected_sources(search_job: dict) -> list[dict]:
     return [s for s in enabled if not ids or int(s["id"]) in ids]
 
 
+def search_terms_for_job(search_job: dict, profile: dict) -> list[str]:
+    """Prefer isolated per-job queries and fall back to the scoring profile."""
+    configured = [str(term).strip() for term in (search_job.get("search_terms") or []) if str(term).strip()]
+    return list(dict.fromkeys(configured)) or search_terms_for_profile(profile)
+
+
 async def run_search_job(search_job_id: int) -> dict:
     search_job = get_search_job(search_job_id, mask_secrets=False)
     if not search_job:
@@ -67,7 +73,9 @@ async def run_search_job(search_job_id: int) -> dict:
         if not profile:
             raise ValueError("Search profile not found")
         candidate = candidate_for_search_job(search_job_id)
-        search_terms = search_terms_for_profile(profile)
+        search_terms = search_terms_for_job(search_job, profile)
+        if not search_terms:
+            raise ValueError("Search job has no search keywords and its profile provides no fallback keywords")
         sources = _selected_sources(search_job)
         fetched, provider_errors = await fetch_all_jobs(sources, search_terms, search_job["target_location"])
         matches = []
@@ -149,6 +157,7 @@ async def run_search_job(search_job_id: int) -> dict:
             "search_job_id": search_job_id,
             "name": search_job["name"],
             "profile": profile["name"],
+            "search_terms": search_terms,
             "candidate": candidate["name"] if candidate else None,
             "fetched": len(fetched),
             "matches": len(matches),

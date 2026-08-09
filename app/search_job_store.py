@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS search_jobs (
     profile_id INTEGER NOT NULL,
     target_location TEXT NOT NULL DEFAULT 'Berlin',
     location_terms_json TEXT NOT NULL DEFAULT '[]',
+    search_terms_json TEXT NOT NULL DEFAULT '[]',
     source_ids_json TEXT NOT NULL DEFAULT '[]',
     frequency TEXT NOT NULL DEFAULT 'weekly',
     day_of_week TEXT NOT NULL DEFAULT 'mon',
@@ -82,6 +83,9 @@ def ensure_search_job_schema() -> None:
     p = get_profile()
     with connection() as con:
         con.executescript(SEARCH_JOB_SCHEMA)
+        columns = {row[1] for row in con.execute("PRAGMA table_info(search_jobs)").fetchall()}
+        if "search_terms_json" not in columns:
+            con.execute("ALTER TABLE search_jobs ADD COLUMN search_terms_json TEXT NOT NULL DEFAULT '[]'")
         if con.execute("SELECT COUNT(*) FROM search_jobs").fetchone()[0] == 0 and p:
             now = _now()
             con.execute(
@@ -111,6 +115,7 @@ def _decode(row, mask_secrets: bool) -> dict[str, Any]:
     for k in ("enabled", "notify_telegram", "notify_email"):
         d[k] = bool(d[k])
     d["location_terms"] = json.loads(d.pop("location_terms_json") or "[]")
+    d["search_terms"] = json.loads(d.pop("search_terms_json") or "[]")
     d["source_ids"] = json.loads(d.pop("source_ids_json") or "[]")
     d["notification"] = json.loads(d.pop("notification_json") or "{}")
     enc = json.loads(d.pop("secrets_json") or "{}")
@@ -152,12 +157,20 @@ def save_search_job(data: dict[str, Any], job_id: int | None = None) -> int:
         for key, value in supplied_secrets.items():
             if key in SECRET_FIELDS and value and value != "configured":
                 existing_secrets[key] = encrypt_secret(value)
+        search_terms = []
+        seen_terms = set()
+        for value in data.get("search_terms") or []:
+            term = " ".join(str(value).strip().lower().split())
+            if term and term not in seen_terms:
+                search_terms.append(term)
+                seen_terms.add(term)
         vals = {
             "name": str(data.get("name", "Search Job")).strip(),
             "enabled": int(bool(data.get("enabled", True))),
             "profile_id": int(data["profile_id"]),
             "target_location": str(data.get("target_location", "Berlin")),
             "location_terms_json": json.dumps(data.get("location_terms", []), ensure_ascii=False),
+            "search_terms_json": json.dumps(search_terms, ensure_ascii=False),
             "source_ids_json": json.dumps(data.get("source_ids", [])),
             "frequency": data.get("frequency", "weekly"),
             "day_of_week": data.get("day_of_week", "mon"),
@@ -175,13 +188,13 @@ def save_search_job(data: dict[str, Any], job_id: int | None = None) -> int:
         }
         if job_id:
             con.execute(
-                """UPDATE search_jobs SET name=:name,enabled=:enabled,profile_id=:profile_id,target_location=:target_location,location_terms_json=:location_terms_json,source_ids_json=:source_ids_json,frequency=:frequency,day_of_week=:day_of_week,hour=:hour,minute=:minute,interval_hours=:interval_hours,min_score_override=:min_score_override,min_language_score_override=:min_language_score_override,max_results=:max_results,notify_telegram=:notify_telegram,notify_email=:notify_email,notification_json=:notification_json,secrets_json=:secrets_json,updated_at=:updated_at WHERE id=:id""",
+                """UPDATE search_jobs SET name=:name,enabled=:enabled,profile_id=:profile_id,target_location=:target_location,location_terms_json=:location_terms_json,search_terms_json=:search_terms_json,source_ids_json=:source_ids_json,frequency=:frequency,day_of_week=:day_of_week,hour=:hour,minute=:minute,interval_hours=:interval_hours,min_score_override=:min_score_override,min_language_score_override=:min_language_score_override,max_results=:max_results,notify_telegram=:notify_telegram,notify_email=:notify_email,notification_json=:notification_json,secrets_json=:secrets_json,updated_at=:updated_at WHERE id=:id""",
                 {**vals, "id": job_id},
             )
             return job_id
         cur = con.execute(
-            """INSERT INTO search_jobs(name,enabled,profile_id,target_location,location_terms_json,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,max_results,notify_telegram,notify_email,notification_json,secrets_json,created_at,updated_at)
-                           VALUES(:name,:enabled,:profile_id,:target_location,:location_terms_json,:source_ids_json,:frequency,:day_of_week,:hour,:minute,:interval_hours,:min_score_override,:min_language_score_override,:max_results,:notify_telegram,:notify_email,:notification_json,:secrets_json,:created_at,:updated_at)""",
+            """INSERT INTO search_jobs(name,enabled,profile_id,target_location,location_terms_json,search_terms_json,source_ids_json,frequency,day_of_week,hour,minute,interval_hours,min_score_override,min_language_score_override,max_results,notify_telegram,notify_email,notification_json,secrets_json,created_at,updated_at)
+                           VALUES(:name,:enabled,:profile_id,:target_location,:location_terms_json,:search_terms_json,:source_ids_json,:frequency,:day_of_week,:hour,:minute,:interval_hours,:min_score_override,:min_language_score_override,:max_results,:notify_telegram,:notify_email,:notification_json,:secrets_json,:created_at,:updated_at)""",
             {**vals, "created_at": now},
         )
         return int(cur.lastrowid)

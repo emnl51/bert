@@ -1,7 +1,13 @@
 from app import db
 from app.profile_store import ensure_profile_schema, list_profiles
-from app.search_job_store import ensure_search_job_schema, list_search_jobs, save_search_job, mark_search_job_seen
+from app.search_job_store import (
+    ensure_search_job_schema,
+    list_search_jobs,
+    mark_search_job_seen,
+    save_search_job,
+)
 from app.models import Job
+from app.search_job_service import search_terms_for_job
 
 
 def setup_db(tmp_path, monkeypatch):
@@ -66,3 +72,30 @@ def test_search_job_notification_settings_are_isolated(tmp_path, monkeypatch):
     jobs = {j["id"]: j for j in list_search_jobs()}
     assert jobs[a]["notify_telegram"] is True and jobs[a]["notify_email"] is False
     assert jobs[b]["notify_email"] is True and jobs[b]["notify_telegram"] is False
+
+
+def test_search_terms_are_isolated_and_normalized_per_search_job(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    p = list_profiles()[0]
+    job_id = save_search_job(
+        {
+            "name": "Part-time only",
+            "profile_id": p["id"],
+            "search_terms": [
+                "  Teilzeit Process Engineer  ",
+                "part time quality engineer",
+                "teilzeit process engineer",
+            ],
+        }
+    )
+    saved = next(job for job in list_search_jobs() if job["id"] == job_id)
+    assert saved["search_terms"] == ["teilzeit process engineer", "part time quality engineer"]
+    assert search_terms_for_job(saved, p) == saved["search_terms"]
+    assert not any("werkstudent" in term for term in search_terms_for_job(saved, p))
+
+
+def test_empty_search_terms_inherit_selected_profile(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    p = list_profiles()[0]
+    assert search_terms_for_job({"search_terms": []}, p) == search_terms_for_job({}, p)
+    assert "werkstudent supply chain" in search_terms_for_job({}, p)
