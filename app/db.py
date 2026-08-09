@@ -3,11 +3,28 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from threading import RLock
 from typing import Any
 from .config import settings
 from .models import Job
 from .content_language import detect_content_language
 from .secrets import decrypt_secret, encrypt_secret
+
+
+_DATABASE_LOCK = RLock()
+
+
+@contextmanager
+def exclusive_database_access():
+    """Serialize database maintenance with ordinary application access.
+
+    SQLite handles concurrent readers and writers, but replacing the database
+    file requires every in-process connection to be closed. A re-entrant lock
+    lets restore code run migrations that open their own managed connections
+    while other request and scheduler threads wait for the replacement to finish.
+    """
+    with _DATABASE_LOCK:
+        yield
 
 
 SCHEMA = """
@@ -206,6 +223,11 @@ def _secure_database_file() -> None:
 
 
 def init_db() -> None:
+    with exclusive_database_access():
+        _init_db_unlocked()
+
+
+def _init_db_unlocked() -> None:
     folder = os.path.dirname(settings.database_path)
     if folder:
         os.makedirs(folder, exist_ok=True)
@@ -274,12 +296,13 @@ def init_db() -> None:
 
 @contextmanager
 def connection():
-    con = _connect()
-    try:
-        yield con
-        con.commit()
-    finally:
-        con.close()
+    with _DATABASE_LOCK:
+        con = _connect()
+        try:
+            yield con
+            con.commit()
+        finally:
+            con.close()
 
 
 def _connect() -> sqlite3.Connection:

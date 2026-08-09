@@ -6,14 +6,14 @@
     applications:['→','Applications'], intelligence:['◇','Intelligence'], candidates:['◎','Candidate Profiles'],
     learning:['+','Learning'], profiles:['◉','Search Profiles'], sources:['◫','Sources'],
     search:['⌕','Global Search'], keywords:['#','Ranking Rules'], notifications:['↗','Notifications'],
-    runs:['↻','Run History'], database:['DB','Database'], logs:['>_','Logs'], updates:['↑','Updates']
+    runs:['↻','Run History'], users:['◎','Users'], database:['DB','Database'], logs:['>_','Logs'], updates:['↑','Updates']
   };
   const GROUPS = [
     {key:'dashboard',label:'Dashboard',icon:'⌂',tabs:['overview']},
     {key:'jobs',label:'Jobs',icon:'▤',tabs:['searchJobs','jobReview','applications']},
     {key:'intelligence',label:'Intelligence',icon:'◇',tabs:['intelligence','candidates','learning']},
     {key:'settings',label:'Settings',icon:'⚙',tabs:['profiles','sources','search','keywords','notifications']},
-    {key:'administration',label:'Administration',icon:'▦',tabs:['runs','database','logs','updates']},
+    {key:'administration',label:'Administration',icon:'▦',tabs:['runs','users','database','logs','updates']},
   ];
 
   function installStyles(){

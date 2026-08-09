@@ -56,6 +56,7 @@ def database_status(_: str = Depends(require_admin)):
     return {
         "version": "14.0.0",
         "database_path": settings.database_path,
+        "max_restore_bytes": settings.database_restore_max_bytes,
         "tables": len(list_user_tables()),
         "counts": counts,
         "scopes": {

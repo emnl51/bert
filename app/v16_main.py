@@ -1,15 +1,59 @@
 import json
+import os
+from contextlib import asynccontextmanager
+from html import escape
 from pathlib import Path
 
 from fastapi import Depends, HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 
+from . import v10_main as v10
 from . import v15_main as v15
 from .config import settings
+from .database_admin import (
+    DatabaseRestoreBusy,
+    DatabaseRestoreFailed,
+    InvalidDatabaseBackup,
+    create_download_backup,
+    create_restore_staging_file,
+    remove_temporary_database,
+    restore_database,
+)
 from .db import list_sources, save_source
-from .security import require_admin
+from .security import (
+    SESSION_COOKIE,
+    authenticate_admin,
+    create_admin_session,
+    current_admin,
+    current_user,
+    record_login_failure,
+    record_login_success,
+    require_admin,
+    require_login_attempt_allowed,
+    require_same_origin,
+    require_user,
+)
+from . import system_mail
+from .system_mail import SystemMailError
+from .user_store import (
+    AccountError,
+    authenticate_user,
+    complete_registration,
+    create_registration,
+    create_user_session,
+    ensure_user_schema,
+    list_accounts,
+    revoke_all_user_sessions,
+    registration_for_token,
+    RegistrationError,
+    revoke_registration,
+    revoke_user_session,
+    set_user_status,
+)
 from .update_client import (
     UpdateAgentError,
     check_for_updates,
@@ -22,6 +66,18 @@ from .version import VERSION
 app = v15.app
 app.version = VERSION
 
+_inherited_lifespan = app.router.lifespan_context
+
+
+@asynccontextmanager
+async def v17_account_lifespan(application):
+    async with _inherited_lifespan(application):
+        ensure_user_schema()
+        yield
+
+
+app.router.lifespan_context = v17_account_lifespan
+
 # Replace the inherited dashboard and public health routes so the active shell and
 # monitoring endpoint always report the current release instead of an older base layer.
 app.router.routes[:] = [
@@ -32,6 +88,169 @@ app.router.routes[:] = [
 
 
 @app.get("/", response_class=HTMLResponse)
+def login_page(request: Request):
+    if current_admin(request):
+        return RedirectResponse("/app", status_code=303)
+    if current_user(request):
+        return RedirectResponse("/account", status_code=303)
+    html = Path("app/templates/login.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("{{ app_name }}", settings.app_name).replace("{{ version }}", VERSION))
+
+
+class AdminLoginPayload(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class UserLoginPayload(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class ActivateAccountPayload(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+    full_name: str = Field(min_length=2, max_length=120)
+    password: str = Field(min_length=12, max_length=1024)
+
+
+class RegisterEmailPayload(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class UserStatusPayload(BaseModel):
+    status: str
+
+
+@app.post("/auth/admin-login")
+def admin_login(payload: AdminLoginPayload, request: Request):
+    if not authenticate_admin(request, payload.username, payload.password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    response = Response(content=json.dumps({"ok": True, "redirect": "/app"}), media_type="application/json")
+    response.set_cookie(
+        SESSION_COOKIE,
+        create_admin_session(),
+        max_age=settings.session_lifetime_seconds,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=settings.session_lifetime_seconds,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+@app.post("/auth/user-login")
+def user_login(payload: UserLoginPayload, request: Request):
+    require_login_attempt_allowed(request)
+    user = authenticate_user(payload.email, payload.password)
+    if not user:
+        record_login_failure(request)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    record_login_success(request)
+    token = create_user_session(
+        user["id"],
+        request.client.host if request.client else "",
+        request.headers.get("user-agent", ""),
+    )
+    response = Response(content=json.dumps({"ok": True, "redirect": "/account"}), media_type="application/json")
+    _set_session_cookie(response, token)
+    return response
+
+
+@app.post("/auth/register", status_code=202)
+def request_registration(payload: RegisterEmailPayload, request: Request):
+    require_login_attempt_allowed(request)
+    try:
+        created = create_registration(
+            payload.email,
+            request.client.host if request.client else "unknown",
+        )
+    except AccountError as exc:
+        record_login_failure(request)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if created:
+        registration_id, token = created
+        try:
+            system_mail.send_activation_email(payload.email.strip().lower(), token)
+        except SystemMailError as exc:
+            revoke_registration(registration_id, "system", action="user.registration_delivery_failed")
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    record_login_success(request)
+    return {
+        "ok": True,
+        "message": "If this email can be registered, an activation link has been sent.",
+    }
+
+
+@app.get("/activate", response_class=HTMLResponse)
+def activation_page(token: str = ""):
+    registration = registration_for_token(token)
+    html = Path("app/templates/activate.html").read_text(encoding="utf-8")
+    replacements = {
+        "{{ app_name }}": settings.app_name,
+        "{{ version }}": VERSION,
+        "{{ token_json }}": json.dumps(token).replace("<", "\\u003c"),
+        "{{ email }}": escape(registration["email"]) if registration else "",
+        "{{ form_hidden }}": "" if registration else "hidden",
+        "{{ invalid_hidden }}": "hidden" if registration else "",
+    }
+    for key, value in replacements.items():
+        html = html.replace(key, value)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/auth/activate")
+def activate_account(payload: ActivateAccountPayload, request: Request):
+    require_login_attempt_allowed(request)
+    try:
+        user = complete_registration(payload.token, payload.full_name, payload.password)
+    except (AccountError, RegistrationError) as exc:
+        record_login_failure(request)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_login_success(request)
+    token = create_user_session(
+        user["id"],
+        request.client.host if request.client else "",
+        request.headers.get("user-agent", ""),
+    )
+    response = Response(content=json.dumps({"ok": True, "redirect": "/account"}), media_type="application/json")
+    _set_session_cookie(response, token)
+    return response
+
+
+@app.post("/auth/logout")
+def logout(request: Request):
+    if not current_admin(request):
+        revoke_user_session(request.cookies.get(SESSION_COOKIE))
+    response = Response(content=json.dumps({"ok": True, "redirect": "/"}), media_type="application/json")
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
+
+
+@app.get("/account", response_class=HTMLResponse)
+def account_page(user: dict = Depends(require_user)):
+    html = Path("app/templates/account.html").read_text(encoding="utf-8")
+    return HTMLResponse(
+        html.replace("{{ app_name }}", settings.app_name)
+        .replace("{{ version }}", VERSION)
+        .replace("{{ full_name }}", escape(user["full_name"]))
+        .replace("{{ email }}", escape(user["email"])),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/app", response_class=HTMLResponse)
 def dashboard(request: Request, _: str = Depends(require_admin)):
     html = Path("app/templates/index.html").read_text(encoding="utf-8").replace("{{ app_name }}", settings.app_name)
     html = html.replace(
@@ -57,6 +276,7 @@ def dashboard(request: Request, _: str = Depends(require_admin)):
         '<script src="/database-ui.js"></script>'
         '<script src="/log-ui.js"></script>'
         '<script src="/update-ui.js"></script>'
+        '<script src="/users-ui.js"></script>'
         f"<script>window.APP_SHELL={shell_config};</script>"
         '<script src="/ui-shell.js"></script>'
     )
@@ -120,6 +340,46 @@ def ui_shell(_: str = Depends(require_admin)):
     return Response(Path("app/ui-shell.js").read_text(encoding="utf-8"), media_type="application/javascript")
 
 
+@app.get("/users-ui.js")
+def users_ui(_: str = Depends(require_admin)):
+    return Response(Path("app/users-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
+
+
+@app.get("/api/admin/users")
+def api_admin_users(_: str = Depends(require_admin)):
+    return list_accounts()
+
+
+@app.post("/api/admin/registrations/{registration_id}/revoke")
+def api_revoke_registration(registration_id: int, request: Request, admin: str = Depends(require_admin)):
+    require_same_origin(request)
+    if not revoke_registration(registration_id, admin):
+        raise HTTPException(status_code=404, detail="Pending registration not found")
+    return {"ok": True}
+
+
+@app.put("/api/admin/users/{user_id}/status")
+def api_set_user_status(
+    user_id: int, payload: UserStatusPayload, request: Request, admin: str = Depends(require_admin)
+):
+    require_same_origin(request)
+    try:
+        changed = set_user_status(user_id, payload.status, admin)
+    except AccountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not changed:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True, "status": payload.status}
+
+
+@app.post("/api/admin/users/{user_id}/revoke-sessions")
+def api_revoke_user_sessions(user_id: int, request: Request, admin: str = Depends(require_admin)):
+    require_same_origin(request)
+    if not revoke_all_user_sessions(user_id, admin):
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True}
+
+
 @app.get("/update-ui.js")
 def update_ui(_: str = Depends(require_admin)):
     return Response(Path("app/update-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
@@ -153,6 +413,71 @@ def api_apply_update(payload: ApplyUpdatePayload, request: Request, _: str = Dep
     if payload.confirmation != "APPLY UPDATE":
         raise HTTPException(status_code=400, detail="Update confirmation is invalid")
     return _update_response(start_update)
+
+
+def _require_database_action(request: Request, expected: str) -> None:
+    require_same_origin(request)
+    if request.headers.get("x-bert-action") != expected:
+        raise HTTPException(status_code=400, detail="Missing or invalid database action header")
+
+
+@app.post("/api/database/backup")
+def api_download_database_backup(request: Request, _: str = Depends(require_admin)):
+    _require_database_action(request, "backup")
+    path, filename = create_download_backup()
+    return FileResponse(
+        path,
+        media_type="application/vnd.sqlite3",
+        filename=filename,
+        headers={
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+        },
+        background=BackgroundTask(remove_temporary_database, path),
+    )
+
+
+@app.post("/api/database/restore")
+async def api_restore_database(request: Request, _: str = Depends(require_admin)):
+    _require_database_action(request, "restore")
+    if request.headers.get("x-bert-confirmation") != "RESTORE DATABASE":
+        raise HTTPException(status_code=400, detail="Restore confirmation is invalid")
+
+    max_bytes = settings.database_restore_max_bytes
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > max_bytes:
+                raise HTTPException(status_code=413, detail="Uploaded backup is too large")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length header") from exc
+
+    staging_path = create_restore_staging_file()
+    uploaded_bytes = 0
+    try:
+        with open(staging_path, "wb") as handle:
+            async for chunk in request.stream():
+                uploaded_bytes += len(chunk)
+                if uploaded_bytes > max_bytes:
+                    raise HTTPException(status_code=413, detail="Uploaded backup is too large")
+                handle.write(chunk)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if uploaded_bytes == 0:
+            raise HTTPException(status_code=400, detail="Uploaded backup is empty")
+        try:
+            result = await run_in_threadpool(restore_database, staging_path)
+        except InvalidDatabaseBackup as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except DatabaseRestoreBusy as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except DatabaseRestoreFailed as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        v10.reschedule_search_jobs()
+        return {**result, "uploaded_bytes": uploaded_bytes, "scheduler_rescheduled": True}
+    finally:
+        remove_temporary_database(staging_path)
 
 
 _FAVICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
@@ -193,4 +518,7 @@ def v16_health(_: str = Depends(require_admin)):
         "ollama_context_weight": 30,
         "intelligence_cache": True,
         "web_update_management": True,
+        "web_database_backup_restore": True,
+        "email_self_registration": True,
+        "registered_user_sessions": True,
     }
