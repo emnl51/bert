@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS applications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     owner_key TEXT NOT NULL DEFAULT 'admin',
     user_id INTEGER,
+    profile_id INTEGER,
     job_key TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'to_apply',
     applied_at TEXT,
@@ -104,6 +105,7 @@ CREATE TABLE IF NOT EXISTS applications (
 );
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_applications_profile ON applications(owner_key, profile_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_job_state (
     owner_key TEXT NOT NULL,
@@ -236,14 +238,14 @@ def _migrate_application_ownership(con) -> None:
     con.execute("ALTER TABLE applications RENAME TO applications_legacy_v18")
     con.execute(
         """CREATE TABLE applications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,owner_key TEXT NOT NULL DEFAULT 'admin',user_id INTEGER,job_key TEXT NOT NULL,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,owner_key TEXT NOT NULL DEFAULT 'admin',user_id INTEGER,profile_id INTEGER,job_key TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'to_apply',applied_at TEXT,notes TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(owner_key,job_key),
         FOREIGN KEY(job_key) REFERENCES jobs(job_key) ON DELETE CASCADE)"""
     )
     con.execute(
-        """INSERT INTO applications(owner_key,user_id,job_key,status,applied_at,notes,created_at,updated_at)
-        SELECT 'admin',NULL,job_key,status,applied_at,notes,created_at,updated_at FROM applications_legacy_v18"""
+        """INSERT INTO applications(owner_key,user_id,profile_id,job_key,status,applied_at,notes,created_at,updated_at)
+        SELECT 'admin',NULL,NULL,job_key,status,applied_at,notes,created_at,updated_at FROM applications_legacy_v18"""
     )
     con.execute("DROP TABLE applications_legacy_v18")
     con.execute("CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status)")
@@ -286,6 +288,14 @@ def _init_db_unlocked() -> None:
     with _connect() as con:
         con.executescript(SCHEMA)
         _migrate_application_ownership(con)
+        application_columns = {row[1] for row in con.execute("PRAGMA table_info(applications)").fetchall()}
+        if "profile_id" not in application_columns:
+            # Existing records have no reliable origin profile. Keep them unassigned
+            # instead of guessing from a shared job or later feedback.
+            con.execute("ALTER TABLE applications ADD COLUMN profile_id INTEGER")
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_applications_profile ON applications(owner_key, profile_id, updated_at DESC)"
+        )
         # Lightweight in-place migration for databases created by v1/v2.
         job_columns = {row[1] for row in con.execute("PRAGMA table_info(jobs)").fetchall()}
         if "decision" not in job_columns:
@@ -657,7 +667,9 @@ VALID_DECISIONS = {"unreviewed", "apply", "maybe", "skip"}
 VALID_APPLICATION_STATUSES = {"to_apply", "applied", "interview", "rejected", "offer"}
 
 
-def set_job_decision(job_key: str, decision: str, user_id: int | None = None) -> dict[str, Any]:
+def set_job_decision(
+    job_key: str, decision: str, user_id: int | None = None, profile_id: int | None = None
+) -> dict[str, Any]:
     if decision not in VALID_DECISIONS:
         raise ValueError("Invalid decision")
     now = _now()
@@ -678,9 +690,9 @@ def set_job_decision(job_key: str, decision: str, user_id: int | None = None) ->
         ).fetchone()
         if decision == "apply" and not app:
             con.execute(
-                """INSERT INTO applications(owner_key,user_id,job_key,status,applied_at,notes,created_at,updated_at)
-                   VALUES(?,?,?,'to_apply',NULL,'',?,?)""",
-                (owner, user_id, job_key, now, now),
+                """INSERT INTO applications(owner_key,user_id,profile_id,job_key,status,applied_at,notes,created_at,updated_at)
+                   VALUES(?,?,?,?,'to_apply',NULL,'',?,?)""",
+                (owner, user_id, profile_id, job_key, now, now),
             )
         elif decision != "apply" and app and app["status"] == "to_apply":
             # If it was only queued and never actually applied, remove it from the tracker.
@@ -738,17 +750,26 @@ def save_application(
     }
 
 
-def list_applications(status: str | None = None, limit: int = 300, user_id: int | None = None) -> list[dict[str, Any]]:
+def list_applications(
+    status: str | None = None,
+    limit: int = 300,
+    user_id: int | None = None,
+    profile_id: int | None = None,
+) -> list[dict[str, Any]]:
     where = "WHERE a.owner_key=?"
     params: list[Any] = [_owner_key(user_id)]
     if status in VALID_APPLICATION_STATUSES:
         where += " AND a.status=?"
         params.append(status)
+    if profile_id is not None:
+        where += " AND a.profile_id=?"
+        params.append(profile_id)
     params.append(limit)
     with connection() as con:
         rows = con.execute(
             f"""SELECT a.job_key, a.status, a.applied_at, a.notes, a.created_at, a.updated_at,
                        j.title, j.company, j.location, j.url, j.source, j.score,
+                       a.profile_id,
                        COALESCE(s.decision,'unreviewed') AS decision
                 FROM applications a JOIN jobs j ON j.job_key=a.job_key
                 LEFT JOIN user_job_state s ON s.owner_key=a.owner_key AND s.job_key=a.job_key
@@ -762,11 +783,16 @@ def list_applications(status: str | None = None, limit: int = 300, user_id: int 
     return [dict(row) for row in rows]
 
 
-def application_stats(user_id: int | None = None) -> dict[str, int]:
+def application_stats(user_id: int | None = None, profile_id: int | None = None) -> dict[str, int]:
+    where = "WHERE owner_key=?"
+    params: list[Any] = [_owner_key(user_id)]
+    if profile_id is not None:
+        where += " AND profile_id=?"
+        params.append(profile_id)
     with connection() as con:
         rows = con.execute(
-            "SELECT status, COUNT(*) AS n FROM applications WHERE owner_key=? GROUP BY status",
-            (_owner_key(user_id),),
+            f"SELECT status, COUNT(*) AS n FROM applications {where} GROUP BY status",
+            params,
         ).fetchall()
     result = {status: 0 for status in VALID_APPLICATION_STATUSES}
     for row in rows:

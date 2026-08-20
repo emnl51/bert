@@ -172,6 +172,7 @@ class ProfilePayload(BaseModel):
 
 class JobDecisionPayload(BaseModel):
     decision: str
+    profile_id: int | None = None
 
 
 class JobContentLanguagePayload(BaseModel):
@@ -234,6 +235,14 @@ def review_ui(_: dict = Depends(require_workspace)):
 @app.get("/profile-ui.js")
 def profile_ui(_: dict = Depends(require_workspace)):
     return Response(Path("app/profile-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
+
+
+@app.get("/applications-profile-ui.js")
+def applications_profile_ui(_: dict = Depends(require_workspace)):
+    return Response(
+        Path("app/applications-profile-ui.js").read_text(encoding="utf-8"),
+        media_type="application/javascript",
+    )
 
 
 @app.get("/api/overview")
@@ -481,7 +490,12 @@ def api_jobs(
 @app.put("/api/jobs/{job_key:path}/decision")
 def update_job_decision(job_key: str, payload: JobDecisionPayload, actor: dict = Depends(require_workspace)):
     try:
-        return {"ok": True, **set_job_decision(job_key, payload.decision, user_id=actor["user_id"])}
+        if payload.profile_id is not None and not get_profile(payload.profile_id, user_id=actor["user_id"]):
+            raise HTTPException(404, "Profile not found")
+        return {
+            "ok": True,
+            **set_job_decision(job_key, payload.decision, user_id=actor["user_id"], profile_id=payload.profile_id),
+        }
     except ValueError as exc:
         raise HTTPException(400 if str(exc) == "Invalid decision" else 404, str(exc)) from exc
 
@@ -542,16 +556,24 @@ def remove_learning_rule(rule_id: int, actor: dict = Depends(require_workspace))
 def api_applications(
     status: str = Query("all"),
     limit: int = Query(300, ge=1, le=1000),
+    profile_id: int | None = Query(None),
     actor: dict = Depends(require_workspace),
 ):
     valid = ("all", "to_apply", "applied", "interview", "rejected", "offer")
     if status not in valid:
         raise HTTPException(400, "Invalid application status filter")
+    if profile_id is not None and not get_profile(profile_id, user_id=actor["user_id"]):
+        raise HTTPException(404, "Profile not found")
     return {
         "applications": enrich_applications(
-            list_applications(None if status == "all" else status, limit=limit, user_id=actor["user_id"])
+            list_applications(
+                None if status == "all" else status,
+                limit=limit,
+                user_id=actor["user_id"],
+                profile_id=profile_id,
+            )
         ),
-        "stats": application_stats(user_id=actor["user_id"]),
+        "stats": application_stats(user_id=actor["user_id"], profile_id=profile_id),
     }
 
 
