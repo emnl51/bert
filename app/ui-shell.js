@@ -16,6 +16,26 @@
     {key:'settings',label:'Settings',icon:'⚙',tabs:['profiles','sources','search','keywords','notifications']},
     {key:'administration',label:'Administration',icon:'▦',tabs:['runs','users','systemEmail','database','logs','updates']},
   ];
+  const PAGE_CONTEXT = {
+    overview:'Your search activity, applications and next steps at a glance.',
+    searchJobs:'Manage automated searches, schedules and connected profiles.',
+    jobReview:'Review opportunities and train matching for each search profile.',
+    applications:'Follow every application from first interest to final decision.',
+    intelligence:'Understand candidate fit, job requirements and recommendations.',
+    candidates:'Keep your experience, skills and application documents organized.',
+    learning:'See how your feedback improves future job recommendations.',
+    profiles:'Define the roles, locations and working arrangements you want.',
+    sources:'Choose where new opportunities are discovered.',
+    search:'Adjust shared search preferences and automated schedules.',
+    keywords:'Refine positive ranking signals and excluded terms.',
+    notifications:'Control how you receive job and application updates.',
+    runs:'Inspect completed searches and provider activity.',
+    users:'Manage workspace accounts and access.',
+    systemEmail:'Configure account invitations and system email delivery.',
+    database:'Create backups and manage your application database.',
+    logs:'Review application events and operational diagnostics.',
+    updates:'Check your installed release and safely deploy available updates.'
+  };
 
   function installStyles(){
     if($('jobtrack-v16-style')) return;
@@ -35,15 +55,27 @@
       .table-wrap{max-width:100%;overflow:auto;border-radius:var(--jt-radius);-webkit-overflow-scrolling:touch}.table-wrap table{min-width:860px}.table-wrap th{top:0;z-index:2}.table-wrap td,.table-wrap th{padding:11px 12px}.actions{flex-wrap:wrap}.inline{flex-wrap:wrap}.form-grid,.two{min-width:0}.source-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
       .jt-sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.48);backdrop-filter:blur(2px);z-index:35}.toast{max-width:min(430px,calc(100vw - 28px));right:14px;bottom:14px}
       .jt-mobile-table{display:none}
+      :root{--jt-sidebar:276px;--jt-radius:16px;--jt-bg:#f3f6fb;--jt-blue:#315eea;--jt-blue-dark:#2448c4}
+      body{background:#f4f6fb}.side{padding:20px 14px 14px;background:linear-gradient(175deg,#101a2c 0%,#121e33 62%,#15223a 100%);border-right:1px solid rgba(148,163,184,.08)}
+      .brand{padding:3px 9px 18px}.brand .jt-brand-text{font-size:19px;letter-spacing:-.035em}.brand small{margin-top:5px;font-size:10px;letter-spacing:.035em}
+      .jt-sidebar-search{position:relative;margin:0 2px 16px}.jt-sidebar-search input{width:100%;height:40px;border:1px solid rgba(148,163,184,.18);border-radius:11px;background:rgba(255,255,255,.055);padding:0 38px 0 35px;color:#e6edf8;font-size:12px;outline:none}.jt-sidebar-search input::placeholder{color:#8390a7}.jt-sidebar-search input:focus{border-color:rgba(110,152,255,.72);background:rgba(255,255,255,.08);box-shadow:0 0 0 3px rgba(84,125,238,.14)}.jt-search-icon{position:absolute;left:12px;top:10px;color:#91a0b8;font-size:15px;pointer-events:none}.jt-search-shortcut{position:absolute;right:10px;top:10px;color:#8d9ab0;font-size:10px;border:1px solid rgba(148,163,184,.2);border-radius:4px;padding:1px 5px;pointer-events:none}
+      .nav{flex:1;gap:7px;padding-bottom:14px}.jt-nav-group{gap:3px}.nav button[hidden],.jt-nav-group[hidden],.jt-nav-empty[hidden]{display:none!important}.jt-nav-group-title{min-height:43px!important;border-radius:10px!important;color:#d8e1f0!important;font-size:12px!important;font-weight:700!important}.jt-nav-group.has-active>.jt-nav-group-title{background:rgba(94,129,235,.13)!important;color:#fff!important}.jt-nav-group-title .jt-group-icon{color:#93a8cb}.jt-nav-group.has-active .jt-group-icon{color:#a9bdff}.jt-group-count{min-width:20px;text-align:center;font-size:10px;color:#91a0b8;background:rgba(255,255,255,.065);border-radius:999px;padding:2px 5px}.jt-nav-group-panel{padding:2px 0 7px 14px;border-left:1px solid rgba(148,163,184,.14);margin-left:20px}.jt-nav-group-panel>button{padding-left:10px!important}.nav button.active{background:rgba(84,123,233,.19);box-shadow:inset 2px 0 0 #85a2ff}.jt-nav-empty{padding:15px 10px;color:#9aa7bc;font-size:12px}
+      .jt-sidebar-footer{display:flex;align-items:center;gap:10px;margin-top:auto;padding:13px 8px 3px;border-top:1px solid rgba(148,163,184,.14)}.jt-user-avatar{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(85,125,235,.18);color:#c1d1ff;font-size:13px;font-weight:750}.jt-user-copy{min-width:0}.jt-user-label{display:block;color:#e7edf7;font-size:12px;font-weight:680}.jt-user-meta{display:block;margin-top:2px;color:#95a2b7;font-size:10px}
+      .app.jt-collapsed .jt-sidebar-search,.app.jt-collapsed .jt-group-count,.app.jt-collapsed .jt-user-copy{display:none}.app.jt-collapsed .jt-sidebar-footer{justify-content:center;padding-inline:0}.app.jt-collapsed .jt-nav-group-panel{border-left:0;margin-left:0}
+      .main{padding:27px clamp(24px,3.3vw,48px) 56px}.top{min-height:78px;margin:-10px 0 24px;padding:13px 0;background:rgba(244,246,251,.88);border-bottom:1px solid rgba(210,218,229,.72)}.jt-page-heading{min-width:0;flex:1}.jt-breadcrumb{margin-bottom:4px;color:#67758c;font-size:11px;font-weight:650;letter-spacing:.025em}.top h1{font-size:clamp(22px,2.1vw,29px)}.jt-page-description{margin-top:4px;color:#738097;font-size:12px}.top-actions .btn{min-height:39px;padding-inline:13px}.top-actions .btn.primary{box-shadow:0 5px 14px rgba(49,94,234,.2)}
+      .section.active{animation:jt-section-enter .17s ease-out}@keyframes jt-section-enter{from{opacity:.7;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}.card{border-color:#e1e7f0;box-shadow:0 4px 18px rgba(25,40,70,.045)}.grid{gap:15px}.grid>.card{position:relative;overflow:hidden}.grid>.card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:#d4dcee}.grid>.card:nth-child(4n + 1)::before{background:#5579e8}.grid>.card:nth-child(4n + 2)::before{background:#6a8caa}.grid>.card:nth-child(4n + 3)::before{background:#618f83}.grid>.card:nth-child(4n)::before{background:#907da9}.grid>.card>.muted{font-size:11px;font-weight:680;letter-spacing:.02em}.metric{margin-top:8px;letter-spacing:-.035em}.section-title{margin-top:30px}.table-wrap{border-color:#e1e7f0;box-shadow:0 4px 18px rgba(25,40,70,.04)}.table-wrap th{background:#f8fafd;font-size:10px;letter-spacing:.065em}.table-wrap tbody tr:hover{background:#fafcff}
+      .jt-overview-welcome{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:20px;padding:20px 22px;background:linear-gradient(115deg,#fff 0%,#f3f6ff 100%);border:1px solid #e1e7f0;border-radius:16px}.jt-overview-welcome h2{margin:0 0 5px;font-size:18px;letter-spacing:-.025em}.jt-overview-welcome p{margin:0;color:#69778b;font-size:12px}.jt-quick-actions{display:flex;flex-wrap:wrap;gap:8px}.jt-quick-action{min-height:36px;font-size:12px}
       @media(max-width:1280px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.main{padding-inline:22px}}
       @media(max-width:980px){
         .app,.app.jt-collapsed{display:block}.side{position:fixed;left:0;top:0;bottom:0;width:min(310px,86vw);height:100dvh;transform:translateX(-102%);transition:transform .22s ease;z-index:50;padding-top:18px}.side.jt-open{transform:translateX(0)}.jt-sidebar-overlay.jt-open{display:block}.jt-collapse{display:none}.brand .jt-brand-text,.app.jt-collapsed .brand .jt-brand-text,.brand small,.app.jt-collapsed .brand small,.jt-nav-label,.app.jt-collapsed .jt-nav-label{display:block}.nav button,.app.jt-collapsed .nav button{justify-content:flex-start;padding:10px 12px}.main{padding:14px 18px 42px}.top{top:0;margin:-2px -2px 16px;padding:9px 2px;min-height:58px}.jt-mobile-menu{display:inline-flex}.top-actions .btn{padding-inline:10px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid,.two{grid-template-columns:1fr 1fr}.source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
       }
+      @media(max-width:980px){.jt-sidebar-search,.app.jt-collapsed .jt-sidebar-search{display:block}.jt-user-copy,.app.jt-collapsed .jt-user-copy{display:block}.jt-page-description{display:none}.main{padding-inline:18px}.top{min-height:66px}.jt-overview-welcome{align-items:flex-start;flex-direction:column}.jt-quick-actions{width:100%}}
       @media(max-width:720px){
         .main{padding:10px 12px 34px}.top{gap:8px}.top h1{font-size:21px;flex:1}.top-actions{gap:6px}.top-actions .btn{min-height:40px;font-size:12px;padding:7px 9px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.card{padding:14px;border-radius:12px}.metric{font-size:23px}.form-grid,.two,.source-grid{grid-template-columns:1fr}.inline{display:grid;grid-template-columns:1fr;width:100%;align-items:stretch}.inline .field{width:100%}.inline>button{width:100%}.actions{display:grid;grid-template-columns:1fr}.actions .btn{width:100%}.section-title{align-items:flex-start;flex-direction:column}.section-title>select,.section-title>.inline{width:100%}
         .table-wrap{border:0;background:transparent;overflow:visible}.table-wrap table{display:block;min-width:0;width:100%}.table-wrap thead{display:none}.table-wrap tbody{display:grid;gap:10px;width:100%}.table-wrap tr{display:block;background:#fff;border:1px solid var(--jt-border);border-radius:12px;padding:6px 12px;box-shadow:0 5px 18px rgba(15,23,42,.04)}.table-wrap td{display:grid;grid-template-columns:minmax(92px,36%) minmax(0,1fr);gap:10px;width:100%;padding:8px 0;border-bottom:1px solid #edf0f5;white-space:normal;overflow-wrap:anywhere}.table-wrap td:last-child{border-bottom:0}.table-wrap td::before{content:attr(data-label);font-size:10px;text-transform:uppercase;letter-spacing:.055em;color:#64748b;font-weight:800;padding-top:2px}.table-wrap td[colspan]{display:block;text-align:center}.table-wrap td[colspan]::before{display:none}.decision{min-width:0}.notes-cell{max-width:none}.compact-select{width:100%;min-width:0}.source-toolbar{flex-direction:column;align-items:stretch}.source-toolbar .field{max-width:none!important}.source-toolbar .btn{width:100%}.jt-modal-backdrop{padding:10px}.jt-modal{border-radius:14px;padding:17px;max-height:94dvh}.jt-fields{grid-template-columns:1fr}.jt-fields .full{grid-column:auto}
       }
       @media(max-width:430px){.grid{grid-template-columns:1fr}.top-actions .btn:not(.primary){display:none}.main{padding-inline:10px}.card{padding:13px}.top h1{font-size:19px}.brand{font-size:19px}}
+      @media(max-width:720px){.jt-breadcrumb{font-size:10px}.top h1{font-size:20px}.jt-overview-welcome{padding:16px}.jt-quick-actions{display:grid;grid-template-columns:1fr 1fr}.jt-quick-action{width:100%}.top-actions .btn{padding-inline:8px}.jt-sidebar-footer{padding-bottom:8px}}
       @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
     `; document.head.appendChild(style);
   }
@@ -65,12 +97,12 @@
       const items=group.tabs.map(tab=>buttons.get(tab)).filter(Boolean); if(!items.length) continue;
       const wrap=document.createElement('div'); wrap.className='jt-nav-group'; wrap.dataset.group=group.key;
       const title=document.createElement('button'); title.type='button'; title.className='jt-nav-group-title';
-      title.innerHTML=`<span class="jt-group-icon" aria-hidden="true">${group.icon}</span><span class="jt-group-label">${group.label}</span><span class="jt-nav-chevron" aria-hidden="true">›</span>`;
+      title.innerHTML=`<span class="jt-group-icon" aria-hidden="true">${group.icon}</span><span class="jt-group-label">${group.label}</span><span class="jt-group-count">${items.length}</span><span class="jt-nav-chevron" aria-hidden="true">›</span>`;
       title.setAttribute('aria-expanded','false'); title.setAttribute('aria-controls',`jt-nav-${group.key}`);
       const panel=document.createElement('div'); panel.id=`jt-nav-${group.key}`; panel.className='jt-nav-group-panel';
       items.forEach(btn=>panel.appendChild(btn)); wrap.append(title,panel); nav.appendChild(wrap);
       const shouldOpen=items.includes(active)||(!active&&group.key==='dashboard');
-      wrap.classList.toggle('open',shouldOpen); title.setAttribute('aria-expanded',String(shouldOpen));
+      wrap.classList.toggle('open',shouldOpen); wrap.classList.toggle('has-active',items.includes(active)); title.setAttribute('aria-expanded',String(shouldOpen));
       title.onclick=()=>{
         const app=document.querySelector('.app');
         if(app?.classList.contains('jt-collapsed')){app.classList.remove('jt-collapsed');try{localStorage.setItem('jobtrack-sidebar-collapsed','0')}catch(_){} }
@@ -83,7 +115,41 @@
 
   function revealGroup(tab){
     const btn=document.querySelector(`.nav button[data-tab="${tab}"]`), group=btn?.closest('.jt-nav-group'); if(!group) return;
-    document.querySelectorAll('.jt-nav-group').forEach(node=>{const open=node===group;node.classList.toggle('open',open);node.querySelector('.jt-nav-group-title')?.setAttribute('aria-expanded',String(open))});
+    document.querySelectorAll('.jt-nav-group').forEach(node=>{const open=node===group;node.classList.toggle('open',open);node.classList.toggle('has-active',open);node.querySelector('.jt-nav-group-title')?.setAttribute('aria-expanded',String(open))});
+  }
+
+  function updatePageContext(tab){
+    const group=GROUPS.find(item=>item.tabs.includes(tab));
+    if($('jtBreadcrumb'))$('jtBreadcrumb').textContent=`${String(SHELL.appName||'Bert')} / ${group?.label||'Workspace'}`;
+    if($('jtPageDescription'))$('jtPageDescription').textContent=PAGE_CONTEXT[tab]||'Manage your job search workspace.';
+  }
+
+  function installNavigationSearch(side){
+    const nav=side.querySelector('.nav');if(!nav||$('jtNavigationSearch'))return;
+    const search=document.createElement('label');search.className='jt-sidebar-search';
+    search.innerHTML='<span class="jt-search-icon" aria-hidden="true">⌕</span><input id="jtNavigationSearch" type="search" placeholder="Find a page…" aria-label="Search navigation"><span class="jt-search-shortcut" aria-hidden="true">/</span>';
+    side.insertBefore(search,nav);
+    const empty=document.createElement('div');empty.className='jt-nav-empty';empty.textContent='No matching pages';empty.hidden=true;nav.appendChild(empty);
+    search.querySelector('input').addEventListener('input',event=>{
+      const query=event.target.value.trim().toLowerCase();let matches=0;
+      nav.querySelectorAll('.jt-nav-group').forEach(group=>{
+        const groupLabel=group.querySelector('.jt-group-label')?.textContent.toLowerCase()||'';let visible=0;
+        group.querySelectorAll('button[data-tab]').forEach(button=>{const show=!query||groupLabel.includes(query)||button.textContent.toLowerCase().includes(query);button.hidden=!show;if(show){visible++;matches++}});
+        group.hidden=!visible;
+        if(query&&visible){group.classList.add('open');group.querySelector('.jt-nav-group-title')?.setAttribute('aria-expanded','true')}
+        if(!query){const active=Boolean(group.querySelector('button[data-tab].active'));group.classList.toggle('open',active);group.querySelector('.jt-nav-group-title')?.setAttribute('aria-expanded',String(active))}
+      });
+      empty.hidden=!query||matches>0;
+    });
+  }
+
+  function installOverviewShortcuts(){
+    const overview=$('overview');if(!overview||$('jtOverviewWelcome'))return;
+    const welcome=document.createElement('div');welcome.id='jtOverviewWelcome';welcome.className='jt-overview-welcome';
+    const shortcuts=[['jobReview','Review jobs'],['applications','Applications'],['profiles','Search profiles']].filter(([tab])=>document.querySelector(`.nav button[data-tab="${tab}"]`));
+    welcome.innerHTML='<div><h2>Your job search workspace</h2><p>Keep profiles, opportunities and applications moving in one place.</p></div><div class="jt-quick-actions"></div>';
+    shortcuts.forEach(([tab,label],index)=>{const button=document.createElement('button');button.type='button';button.className=`btn jt-quick-action${index===0?' primary':''}`;button.textContent=label;button.onclick=()=>document.querySelector(`.nav button[data-tab="${tab}"]`)?.click();welcome.querySelector('.jt-quick-actions').appendChild(button)});
+    overview.insertBefore(welcome,overview.firstChild);
   }
 
   function annotateTables(root=document){
@@ -113,15 +179,18 @@
     brand.innerHTML='<div class="jt-brand-row"><div><span class="jt-brand-text"></span><small></small></div><button class="jt-collapse" type="button" title="Collapse sidebar" aria-label="Collapse sidebar">‹</button></div>';
     brand.querySelector('.jt-brand-text').textContent=String(SHELL.appName||'JobTrack');
     brand.querySelector('small').textContent=`Smart Job Search · v${String(SHELL.version||'16')}`;
+    const pageTitle=$('pageTitle');if(pageTitle){const heading=document.createElement('div');heading.className='jt-page-heading';heading.innerHTML='<div id="jtBreadcrumb" class="jt-breadcrumb"></div>';pageTitle.before(heading);heading.appendChild(pageTitle);const description=document.createElement('div');description.id='jtPageDescription';description.className='jt-page-description';heading.appendChild(description)}
     const mobile=document.createElement('button'); mobile.id='jtMobileMenu'; mobile.className='jt-mobile-menu'; mobile.type='button'; mobile.setAttribute('aria-label','Open navigation'); mobile.setAttribute('aria-expanded','false'); mobile.textContent='☰'; top.insertBefore(mobile,top.firstChild);
     const overlay=document.createElement('div'); overlay.id='jtSidebarOverlay'; overlay.className='jt-sidebar-overlay'; document.body.appendChild(overlay);
     try{if(localStorage.getItem('jobtrack-sidebar-collapsed')==='1')app.classList.add('jt-collapsed')}catch(_){ }
     brand.querySelector('.jt-collapse').onclick=()=>{app.classList.toggle('jt-collapsed');try{localStorage.setItem('jobtrack-sidebar-collapsed',app.classList.contains('jt-collapsed')?'1':'0')}catch(_){}};
     mobile.onclick=()=>setMenu(!side.classList.contains('jt-open')); overlay.onclick=()=>setMenu(false);
-    document.addEventListener('keydown',e=>{if(e.key==='Escape')setMenu(false)});
-    side.addEventListener('click',e=>{if(e.target.closest('.nav button')&&window.innerWidth<=980)setMenu(false)});
-    groupNavigation(); decorateNav(); annotateTables();
-    side.addEventListener('click',e=>{const btn=e.target.closest('.nav button[data-tab]');if(!btn)return;revealGroup(btn.dataset.tab);try{localStorage.setItem('jobtrack-tab',btn.dataset.tab)}catch(_){}setTimeout(()=>{if($('pageTitle'))$('pageTitle').textContent=(NAV[btn.dataset.tab]||[])[1]||btn.textContent.trim()},0)});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(document.activeElement===$('jtNavigationSearch')&&$('jtNavigationSearch').value){$('jtNavigationSearch').value='';$('jtNavigationSearch').dispatchEvent(new Event('input'))}else setMenu(false)}if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){e.preventDefault();if(window.innerWidth<=980)setMenu(true);$('jtNavigationSearch')?.focus()}});
+    side.addEventListener('click',e=>{if(e.target.closest('.nav button[data-tab]')&&window.innerWidth<=980)setMenu(false)});
+    groupNavigation();decorateNav();installNavigationSearch(side);annotateTables();installOverviewShortcuts();
+    const footer=document.createElement('div');footer.className='jt-sidebar-footer';footer.innerHTML='<div class="jt-user-avatar" aria-hidden="true"></div><div class="jt-user-copy"><span class="jt-user-label"></span><span class="jt-user-meta"></span></div>';footer.querySelector('.jt-user-avatar').textContent=SHELL.isAdmin?'A':'U';footer.querySelector('.jt-user-label').textContent=SHELL.isAdmin?'Administrator':'Your workspace';footer.querySelector('.jt-user-meta').textContent=`Version ${String(SHELL.version||'16')}`;side.appendChild(footer);
+    updatePageContext(document.querySelector('.nav button[data-tab].active')?.dataset.tab||'overview');
+    side.addEventListener('click',e=>{const btn=e.target.closest('.nav button[data-tab]');if(!btn)return;revealGroup(btn.dataset.tab);updatePageContext(btn.dataset.tab);try{localStorage.setItem('jobtrack-tab',btn.dataset.tab)}catch(_){}setTimeout(()=>{if($('pageTitle'))$('pageTitle').textContent=(NAV[btn.dataset.tab]||[])[1]||btn.textContent.trim()},0)});
     try{const saved=localStorage.getItem('jobtrack-tab');const savedButton=saved?document.querySelector(`.nav button[data-tab="${saved}"]`):null;if(savedButton&&!savedButton.classList.contains('active'))savedButton.click()}catch(_){}
     const observer=new MutationObserver(muts=>{decorateNav();for(const m of muts){m.addedNodes.forEach(n=>{if(n.nodeType===1) annotateTables(n)})}annotateTables()});
     observer.observe(document.body,{childList:true,subtree:true});

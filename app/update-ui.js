@@ -30,7 +30,7 @@
           <button id="checkUpdateBtn" class="btn" type="button">Check for updates</button>
           <button id="applyUpdateBtn" class="btn primary" type="button" disabled>Apply update</button>
         </div>
-        <div class="hint" style="margin-top:12px">Before deployment, JobTrack creates a SQLite backup. The updater then performs a fast-forward pull, rebuilds only the tracker service and verifies its health.</div>
+        <div class="hint" style="margin-top:12px">Before deployment, Bert creates a SQLite backup. The updater then performs a fast-forward pull, rebuilds only the Bert service and verifies its health.</div>
       </div>
       <div class="card" style="margin-top:14px"><h3 style="margin-top:0">Recent updater log</h3><pre id="updateLog" class="mono" style="white-space:pre-wrap;max-height:320px;overflow:auto;margin-bottom:0">No update activity yet.</pre></div>`;
     document.querySelector('.main').appendChild(section);
@@ -93,7 +93,7 @@
   }
 
   async function applyUpdate() {
-    if (!confirm('Create a database backup and deploy the available update? JobTrack will restart and may be unavailable briefly.')) return;
+    if (!confirm('Create a database backup and deploy the available update? Bert will restart and may be unavailable briefly.')) return;
     $('applyUpdateBtn').disabled = true;
     try {
       render(await api('/api/update/apply', {
@@ -101,7 +101,7 @@
         headers: {'Content-Type': 'application/json', 'X-JobTrack-Action': 'update'},
         body: JSON.stringify({confirmation: 'APPLY UPDATE'})
       }));
-      toast('Update started. This page will reconnect after JobTrack restarts.');
+      toast('Update started. This page will reconnect after Bert restarts.');
       clearTimeout(pollTimer);
       pollTimer = setTimeout(loadUpdateStatus, 3000);
     } catch (error) {

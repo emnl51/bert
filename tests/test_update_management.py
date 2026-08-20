@@ -7,7 +7,7 @@ from starlette.requests import Request
 
 from app.config import settings
 from app.update_client import require_same_origin_update, update_status
-from scripts.jobtrack_updater import JobTrackUpdater
+from scripts.jobtrack_updater import JobTrackUpdater, updater_setting
 
 
 def request_with_headers(**headers: str) -> Request:
@@ -133,6 +133,8 @@ def test_update_feature_is_wired_without_docker_socket_mount():
     ui = Path("app/update-ui.js").read_text(encoding="utf-8")
     compose = Path("docker-compose.updater.yml").read_text(encoding="utf-8")
     updater = Path("scripts/jobtrack_updater.py").read_text(encoding="utf-8")
+    systemd = Path("deploy/bert-updater.service").read_text(encoding="utf-8")
+    server_compose = Path("deploy/docker-compose.server.yml.example").read_text(encoding="utf-8")
 
     assert '<script src="/update-ui.js"></script>' in main
     assert 'id="applyUpdateBtn"' in ui
@@ -142,3 +144,30 @@ def test_update_feature_is_wired_without_docker_socket_mount():
     assert '"--ff-only"' in updater
     assert "source.backup(backup)" in updater
     assert "_wait_for_health" in updater
+    assert "EnvironmentFile=/etc/bert-updater.env" in systemd
+    assert "WorkingDirectory=/home/ubuntu/bert" in systemd
+    assert "RuntimeDirectory=bert-updater" in systemd
+    assert "  bert:" in server_compose
+    assert "  tracker:" not in server_compose
+
+
+def test_updater_prefers_bert_settings_and_preserves_jobtrack_compatibility(monkeypatch):
+    monkeypatch.setenv("JOBTRACK_SERVICE", "tracker")
+    monkeypatch.delenv("BERT_SERVICE", raising=False)
+    assert updater_setting("SERVICE", "bert") == "tracker"
+
+    monkeypatch.setenv("BERT_SERVICE", "bert")
+    assert updater_setting("SERVICE", "tracker") == "bert"
+
+
+def test_updater_reads_dynamic_application_version_fallback():
+    text = Path("app/version.py").read_text(encoding="utf-8")
+    assert JobTrackUpdater._version_from_text(text) == "17.2.2"
+
+
+def test_legacy_application_profile_index_is_created_after_column_migration():
+    database = Path("app/db.py").read_text(encoding="utf-8")
+    migration = "ALTER TABLE applications ADD COLUMN profile_id INTEGER"
+    index = "CREATE INDEX IF NOT EXISTS idx_applications_profile"
+    assert database.count(index) == 1
+    assert database.index(migration) < database.index(index)

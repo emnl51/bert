@@ -12,6 +12,19 @@ def test_v16_shell_has_mobile_navigation_and_table_cards():
     assert "prefers-reduced-motion" in js
 
 
+def test_v16_shell_has_searchable_grouped_navigation_and_workspace_context():
+    js = Path("app/ui-shell.js").read_text(encoding="utf-8")
+    assert "jtNavigationSearch" in js
+    assert 'aria-label="Search navigation"' in js
+    assert "jt-group-count" in js
+    assert "jtBreadcrumb" in js
+    assert "jtPageDescription" in js
+    assert "jtOverviewWelcome" in js
+    assert "jt-quick-actions" in js
+    assert "jt-sidebar-footer" in js
+    assert "Version ${String(SHELL.version" in js
+
+
 def test_v16_main_loads_shell_last():
     text = Path("app/v16_main.py").read_text(encoding="utf-8")
     shell = Path("app/ui-shell.js").read_text(encoding="utf-8")
