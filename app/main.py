@@ -490,15 +490,11 @@ def api_jobs(
 @app.put("/api/jobs/{job_key:path}/decision")
 def update_job_decision(job_key: str, payload: JobDecisionPayload, actor: dict = Depends(require_workspace)):
     try:
-        if payload.profile_id is not None and not get_profile(
-            payload.profile_id, user_id=actor["user_id"]
-        ):
+        if payload.profile_id is not None and not get_profile(payload.profile_id, user_id=actor["user_id"]):
             raise HTTPException(404, "Profile not found")
         return {
             "ok": True,
-            **set_job_decision(
-                job_key, payload.decision, user_id=actor["user_id"], profile_id=payload.profile_id
-            ),
+            **set_job_decision(job_key, payload.decision, user_id=actor["user_id"], profile_id=payload.profile_id),
         }
     except ValueError as exc:
         raise HTTPException(400 if str(exc) == "Invalid decision" else 404, str(exc)) from exc
