@@ -65,7 +65,9 @@ async def fetch_jobspy(source: dict, search_terms: list[str], target_location: s
     max_terms = max(1, min(int(cfg.get("max_search_terms", 6)), 20))
     timeout_seconds = max(10, min(int(cfg.get("timeout_seconds", 60)), 180))
     total_timeout_seconds = max(30, min(int(cfg.get("total_timeout_seconds", 180)), 600))
-    terms = [t for t in search_terms if t][:max_terms] or ["working student supply chain"]
+    terms = [t for t in search_terms if t][:max_terms]
+    if not terms:
+        raise RuntimeError("JobSpy requires at least one profile-specific search phrase")
 
     jobs = []
     seen = set()
@@ -105,8 +107,19 @@ async def fetch_jobspy(source: dict, search_terms: list[str], target_location: s
                 # the scoring text so the employment-format gate can distinguish
                 # FULL_TIME from PART_TIME even when the description is short.
                 job_type = _text(row.get("job_type")) or _text(row.get("employment_type"))
+                metadata = []
                 if job_type:
-                    description = f"Employment type: {job_type}\n{description}"
+                    metadata.append(f"Employment type: {job_type}")
+                for key, label in (
+                    ("work_hours", "Working hours"),
+                    ("hours_per_week", "Hours per week"),
+                    ("job_function", "Role"),
+                ):
+                    value = _text(row.get(key))
+                    if value:
+                        metadata.append(f"{label}: {value}")
+                if metadata:
+                    description = "\n".join([*metadata, description])
                 created = _date_text(row.get("date_posted"))
                 external_id = _text(row.get("id")) or _stable_id(row_site, title, company, url)
                 dedupe = f"{row_site}:{external_id}"

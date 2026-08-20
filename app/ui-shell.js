@@ -36,6 +36,56 @@
     logs:'Review application events and operational diagnostics.',
     updates:'Check your installed release and safely deploy available updates.'
   };
+  const TURKISH = {
+    'Dashboard':'Ana panel','Overview':'Genel bakış','Jobs':'İş ilanları','Job Review':'İlan inceleme','Applications':'Başvurular',
+    'Intelligence':'Akıllı analiz','Candidate Profiles':'Aday profilleri','Learning':'Öğrenme','Search Profiles':'Arama profilleri',
+    'Search profiles':'Arama profilleri','Sources':'Kaynaklar','Global Search':'Genel arama','Ranking Rules':'Sıralama kuralları',
+    'Notifications':'Bildirimler','Run History':'Çalışma geçmişi','Users':'Kullanıcılar','System Email':'Sistem e-postası',
+    'Database':'Veritabanı','Logs':'Kayıtlar','Updates':'Güncellemeler','Settings':'Ayarlar','Administration':'Yönetim',
+    'Administrator':'Yönetici','Your workspace':'Çalışma alanınız','Your job search workspace':'İş arama çalışma alanınız',
+    'Keep profiles, opportunities and applications moving in one place.':'Profilleri, fırsatları ve başvuruları tek yerden yönetin.',
+    'Review jobs':'İlanları incele','Job Review Queue':'İlan inceleme listesi','Search profile':'Arama profili','Decision':'Karar',
+    'Language requirement':'Dil gereksinimi','Ad language':'İlan dili','Min fit':'En düşük uyum','Refresh jobs':'İlanları yenile',
+    'Active':'Aktif','Unreviewed':'İncelenmedi','Suitable':'Uygun','Maybe':'Belki','Not suitable':'Uygun değil','All':'Tümü',
+    'Recommended':'Önerilen','English-first':'Öncelikle İngilizce','German-growth':'Almanca geliştirmeye uygun',
+    'B2 stretch':'B2 gelişim fırsatı','Unclear':'Belirsiz','Profile preference':'Profil tercihi','German (DE)':'Almanca (DE)',
+    'English (EN)':'İngilizce (EN)','Mixed (DE/EN)':'Karışık (DE/EN)','Unknown':'Bilinmiyor','Overall fit':'Genel uyum',
+    'Job fit':'İş uyumu','Language fit':'Dil uyumu','Strong profile match':'Profilinizle güçlü eşleşme',
+    'Provider search phrases':'Sağlayıcı arama ifadeleri','Target positions and roles':'Hedef pozisyonlar ve roller',
+    'Working arrangements':'Çalışma biçimleri','Advanced scoring keywords (JSON)':'Gelişmiş puanlama anahtar kelimeleri (JSON)',
+    'One phrase per line. These are provider queries, not scoring rules.':'Her satıra bir ifade. Bunlar sağlayıcı sorgularıdır, puanlama kuralı değildir.',
+    'One role per line. Used for role matching and bilingual expansion.':'Her satıra bir rol. Rol eşleştirme ve iki dilli genişletme için kullanılır.',
+    'One format per line. Part-time hours are also recognized automatically.':'Her satıra bir çalışma biçimi. Yarı zamanlı saatler otomatik tanınır.',
+    'New profile':'Yeni profil','Edit search profile':'Arama profilini düzenle','New search profile':'Yeni arama profili',
+    'Name':'Ad','Slug':'Kısa ad','Primary location':'Ana konum','Location terms':'Konum terimleri',
+    'Minimum Overall Fit':'En düşük genel uyum','Minimum Language Fit':'En düşük dil uyumu','Language weight %':'Dil ağırlığı %',
+    'Current German':'Mevcut Almanca','Maximum preferred German':'Tercih edilen en yüksek Almanca','Preferred ad languages':'Tercih edilen ilan dilleri',
+    'German':'Almanca','English':'İngilizce','Mixed':'Karışık','Enabled':'Etkin','Disabled':'Devre dışı','Default profile':'Varsayılan profil',
+    'Show B2 stretch':'B2 fırsatlarını göster','Hide German-heavy':'İleri Almanca isteyenleri gizle','Prefer German-growth':'Almanca gelişimini tercih et',
+    'Save profile':'Profili kaydet','Close':'Kapat','Edit':'Düzenle','Delete':'Sil','Use in review':'İncelemede kullan',
+    'Run now':'Şimdi çalıştır','Duplicate':'Çoğalt','Save':'Kaydet','Refresh':'Yenile','Find a page…':'Sayfa ara…',
+    'No matching pages':'Eşleşen sayfa yok','Profile Learning':'Profil öğrenmesi','Positive events':'Olumlu geri bildirim',
+    'Active boosts':'Aktif güçlendirmeler','Active penalties':'Aktif cezalar','Learned preference rules':'Öğrenilmiş tercih kuralları',
+    'Recent review feedback':'Son inceleme geri bildirimleri','Your search activity, applications and next steps at a glance.':'Aramalarınız, başvurularınız ve sonraki adımlar bir bakışta.',
+    'Manage automated searches, schedules and connected profiles.':'Otomatik aramaları, zamanlamaları ve bağlı profilleri yönetin.',
+    'Review opportunities and train matching for each search profile.':'Fırsatları inceleyin ve her profil için eşleştirmeyi geliştirin.',
+    'Follow every application from first interest to final decision.':'Her başvuruyu ilk ilgiden nihai karara kadar takip edin.',
+    'Define the roles, locations and working arrangements you want.':'İstediğiniz rolleri, konumları ve çalışma biçimlerini belirleyin.'
+  };
+  let interfaceLanguage='en';try{interfaceLanguage=localStorage.getItem('bert-interface-language')==='tr'?'tr':'en'}catch(_){}
+
+  function translateInterface(root=document.body){
+    if(interfaceLanguage!=='tr'||!root)return;
+    const translateNode=node=>{const raw=node.nodeValue,trimmed=raw.trim(),translated=TURKISH[trimmed];if(translated)node.nodeValue=raw.replace(trimmed,translated)};
+    if(root.nodeType===3){translateNode(root);return}
+    if(root.nodeType!==1&&root.nodeType!==9)return;
+    if(root.matches?.('script,style,textarea,[data-no-translate]'))return;
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;
+    while((node=walker.nextNode()))if(!node.parentElement?.closest('script,style,textarea,[data-no-translate]'))translateNode(node);
+    if(root.matches?.('[placeholder]')&&TURKISH[root.getAttribute('placeholder')])root.setAttribute('placeholder',TURKISH[root.getAttribute('placeholder')]);
+    root.querySelectorAll?.('[placeholder]').forEach(element=>{const value=element.getAttribute('placeholder');if(TURKISH[value])element.setAttribute('placeholder',TURKISH[value])});
+    document.documentElement.lang='tr';
+  }
 
   function installStyles(){
     if($('jobtrack-v16-style')) return;
@@ -61,6 +111,7 @@
       .jt-sidebar-search{position:relative;margin:0 2px 16px}.jt-sidebar-search input{width:100%;height:40px;border:1px solid rgba(148,163,184,.18);border-radius:11px;background:rgba(255,255,255,.055);padding:0 38px 0 35px;color:#e6edf8;font-size:12px;outline:none}.jt-sidebar-search input::placeholder{color:#8390a7}.jt-sidebar-search input:focus{border-color:rgba(110,152,255,.72);background:rgba(255,255,255,.08);box-shadow:0 0 0 3px rgba(84,125,238,.14)}.jt-search-icon{position:absolute;left:12px;top:10px;color:#91a0b8;font-size:15px;pointer-events:none}.jt-search-shortcut{position:absolute;right:10px;top:10px;color:#8d9ab0;font-size:10px;border:1px solid rgba(148,163,184,.2);border-radius:4px;padding:1px 5px;pointer-events:none}
       .nav{flex:1;gap:7px;padding-bottom:14px}.jt-nav-group{gap:3px}.nav button[hidden],.jt-nav-group[hidden],.jt-nav-empty[hidden]{display:none!important}.jt-nav-group-title{min-height:43px!important;border-radius:10px!important;color:#d8e1f0!important;font-size:12px!important;font-weight:700!important}.jt-nav-group.has-active>.jt-nav-group-title{background:rgba(94,129,235,.13)!important;color:#fff!important}.jt-nav-group-title .jt-group-icon{color:#93a8cb}.jt-nav-group.has-active .jt-group-icon{color:#a9bdff}.jt-group-count{min-width:20px;text-align:center;font-size:10px;color:#91a0b8;background:rgba(255,255,255,.065);border-radius:999px;padding:2px 5px}.jt-nav-group-panel{padding:2px 0 7px 14px;border-left:1px solid rgba(148,163,184,.14);margin-left:20px}.jt-nav-group-panel>button{padding-left:10px!important}.nav button.active{background:rgba(84,123,233,.19);box-shadow:inset 2px 0 0 #85a2ff}.jt-nav-empty{padding:15px 10px;color:#9aa7bc;font-size:12px}
       .jt-sidebar-footer{display:flex;align-items:center;gap:10px;margin-top:auto;padding:13px 8px 3px;border-top:1px solid rgba(148,163,184,.14)}.jt-user-avatar{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:rgba(85,125,235,.18);color:#c1d1ff;font-size:13px;font-weight:750}.jt-user-copy{min-width:0}.jt-user-label{display:block;color:#e7edf7;font-size:12px;font-weight:680}.jt-user-meta{display:block;margin-top:2px;color:#95a2b7;font-size:10px}
+      .jt-interface-language{margin-left:auto;min-height:31px;padding:3px 5px;border:1px solid rgba(148,163,184,.22);border-radius:7px;background:#172339;color:#e7edf7;font-size:11px}.app.jt-collapsed .jt-interface-language{display:none}
       .app.jt-collapsed .jt-sidebar-search,.app.jt-collapsed .jt-group-count,.app.jt-collapsed .jt-user-copy{display:none}.app.jt-collapsed .jt-sidebar-footer{justify-content:center;padding-inline:0}.app.jt-collapsed .jt-nav-group-panel{border-left:0;margin-left:0}
       .main{padding:27px clamp(24px,3.3vw,48px) 56px}.top{min-height:78px;margin:-10px 0 24px;padding:13px 0;background:rgba(244,246,251,.88);border-bottom:1px solid rgba(210,218,229,.72)}.jt-page-heading{min-width:0;flex:1}.jt-breadcrumb{margin-bottom:4px;color:#67758c;font-size:11px;font-weight:650;letter-spacing:.025em}.top h1{font-size:clamp(22px,2.1vw,29px)}.jt-page-description{margin-top:4px;color:#738097;font-size:12px}.top-actions .btn{min-height:39px;padding-inline:13px}.top-actions .btn.primary{box-shadow:0 5px 14px rgba(49,94,234,.2)}
       .section.active{animation:jt-section-enter .17s ease-out}@keyframes jt-section-enter{from{opacity:.7;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}.card{border-color:#e1e7f0;box-shadow:0 4px 18px rgba(25,40,70,.045)}.grid{gap:15px}.grid>.card{position:relative;overflow:hidden}.grid>.card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:#d4dcee}.grid>.card:nth-child(4n + 1)::before{background:#5579e8}.grid>.card:nth-child(4n + 2)::before{background:#6a8caa}.grid>.card:nth-child(4n + 3)::before{background:#618f83}.grid>.card:nth-child(4n)::before{background:#907da9}.grid>.card>.muted{font-size:11px;font-weight:680;letter-spacing:.02em}.metric{margin-top:8px;letter-spacing:-.035em}.section-title{margin-top:30px}.table-wrap{border-color:#e1e7f0;box-shadow:0 4px 18px rgba(25,40,70,.04)}.table-wrap th{background:#f8fafd;font-size:10px;letter-spacing:.065em}.table-wrap tbody tr:hover{background:#fafcff}
@@ -188,11 +239,12 @@
     document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(document.activeElement===$('jtNavigationSearch')&&$('jtNavigationSearch').value){$('jtNavigationSearch').value='';$('jtNavigationSearch').dispatchEvent(new Event('input'))}else setMenu(false)}if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){e.preventDefault();if(window.innerWidth<=980)setMenu(true);$('jtNavigationSearch')?.focus()}});
     side.addEventListener('click',e=>{if(e.target.closest('.nav button[data-tab]')&&window.innerWidth<=980)setMenu(false)});
     groupNavigation();decorateNav();installNavigationSearch(side);annotateTables();installOverviewShortcuts();
-    const footer=document.createElement('div');footer.className='jt-sidebar-footer';footer.innerHTML='<div class="jt-user-avatar" aria-hidden="true"></div><div class="jt-user-copy"><span class="jt-user-label"></span><span class="jt-user-meta"></span></div>';footer.querySelector('.jt-user-avatar').textContent=SHELL.isAdmin?'A':'U';footer.querySelector('.jt-user-label').textContent=SHELL.isAdmin?'Administrator':'Your workspace';footer.querySelector('.jt-user-meta').textContent=`Version ${String(SHELL.version||'16')}`;side.appendChild(footer);
+    const footer=document.createElement('div');footer.className='jt-sidebar-footer';footer.innerHTML='<div class="jt-user-avatar" aria-hidden="true"></div><div class="jt-user-copy"><span class="jt-user-label"></span><span class="jt-user-meta"></span></div><select id="jtInterfaceLanguage" class="jt-interface-language" aria-label="Interface language"><option value="en">EN</option><option value="tr">TR</option></select>';footer.querySelector('.jt-user-avatar').textContent=SHELL.isAdmin?'A':'U';footer.querySelector('.jt-user-label').textContent=SHELL.isAdmin?'Administrator':'Your workspace';footer.querySelector('.jt-user-meta').textContent=`Version ${String(SHELL.version||'16')}`;footer.querySelector('#jtInterfaceLanguage').value=interfaceLanguage;footer.querySelector('#jtInterfaceLanguage').addEventListener('change',event=>{try{localStorage.setItem('bert-interface-language',event.target.value)}catch(_){}location.reload()});side.appendChild(footer);
     updatePageContext(document.querySelector('.nav button[data-tab].active')?.dataset.tab||'overview');
     side.addEventListener('click',e=>{const btn=e.target.closest('.nav button[data-tab]');if(!btn)return;revealGroup(btn.dataset.tab);updatePageContext(btn.dataset.tab);try{localStorage.setItem('jobtrack-tab',btn.dataset.tab)}catch(_){}setTimeout(()=>{if($('pageTitle'))$('pageTitle').textContent=(NAV[btn.dataset.tab]||[])[1]||btn.textContent.trim()},0)});
     try{const saved=localStorage.getItem('jobtrack-tab');const savedButton=saved?document.querySelector(`.nav button[data-tab="${saved}"]`):null;if(savedButton&&!savedButton.classList.contains('active'))savedButton.click()}catch(_){}
-    const observer=new MutationObserver(muts=>{decorateNav();for(const m of muts){m.addedNodes.forEach(n=>{if(n.nodeType===1) annotateTables(n)})}annotateTables()});
+    translateInterface();
+    const observer=new MutationObserver(muts=>{decorateNav();for(const m of muts){m.addedNodes.forEach(n=>{if(n.nodeType===1)annotateTables(n);translateInterface(n)})}annotateTables()});
     observer.observe(document.body,{childList:true,subtree:true});
     window.addEventListener('resize',()=>{if(window.innerWidth>980)setMenu(false)});
   }

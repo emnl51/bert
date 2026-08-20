@@ -68,3 +68,35 @@ def test_b2_can_be_allowed_by_profile():
 
 def test_overall_score_uses_language_weight():
     assert calculate_overall_score(80, 100, 35) == 87
+
+
+def test_german_ad_with_english_working_language_is_recognized():
+    score, label, reasons = assess_language_fit(
+        make_job("Arbeitssprache Englisch. Deutschkenntnisse auf B1 Niveau. Sprachkurs möglich."), PROFILE
+    )
+    assert label == "german_growth"
+    assert score >= 90
+    assert any("English" in reason for reason in reasons)
+
+
+def test_b1_requirement_is_a_stretch_for_an_a2_only_profile():
+    profile = {**PROFILE, "max_german_requirement": "a2"}
+    score, label, reasons = assess_language_fit(make_job("Deutschkenntnisse auf B1 Niveau erforderlich."), profile)
+    assert label == "stretch"
+    assert score < 60
+    assert any("exceeds" in reason for reason in reasons)
+
+
+def test_explicit_english_b2_does_not_become_a_german_b2_requirement():
+    score, label, _ = assess_language_fit(make_job("Arbeitssprache Englisch. English B2 required."), PROFILE)
+    assert label == "english_first"
+    assert score >= 90
+
+
+def test_no_german_requirement_is_treated_as_optional():
+    score, label, reasons = assess_language_fit(
+        make_job("Arbeitssprache Englisch; keine Deutschkenntnisse erforderlich."), PROFILE
+    )
+    assert label == "german_growth"
+    assert score >= 90
+    assert any("optional" in reason for reason in reasons)

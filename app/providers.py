@@ -14,6 +14,17 @@ def _stable_id(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:24]
 
 
+def _description_with_metadata(description: str, **metadata) -> str:
+    lines = []
+    for label, value in metadata.items():
+        if isinstance(value, (list, tuple)):
+            value = ", ".join(str(item).strip() for item in value if str(item).strip())
+        value = str(value or "").strip()
+        if value:
+            lines.append(f"{label.replace('_', ' ').title()}: {value}")
+    return "\n".join([*lines, str(description or "")]).strip()
+
+
 def _safe_provider_error(source: dict, exc: Exception) -> str:
     text = str(exc)
     for value in (source.get("secrets") or {}).values():
@@ -51,7 +62,11 @@ async def fetch_arbeitnow(source: dict, search_terms: list[str], target_location
                         company=company,
                         location=location,
                         url=url,
-                        description=item.get("description") or "",
+                        description=_description_with_metadata(
+                            item.get("description") or "",
+                            employment_type=item.get("job_types"),
+                            role_tags=item.get("tags"),
+                        ),
                         created_at=str(item.get("created_at") or ""),
                         remote=bool(item.get("remote", False)),
                     )
@@ -99,7 +114,11 @@ async def fetch_adzuna(source: dict, search_terms: list[str], target_location: s
                         company=(item.get("company") or {}).get("display_name", ""),
                         location=(item.get("location") or {}).get("display_name", ""),
                         url=item.get("redirect_url") or "",
-                        description=item.get("description") or "",
+                        description=_description_with_metadata(
+                            item.get("description") or "",
+                            employment_type=item.get("contract_time"),
+                            contract_type=item.get("contract_type"),
+                        ),
                         created_at=item.get("created") or "",
                         remote=False,
                     )
@@ -175,7 +194,11 @@ async def fetch_jooble(source: dict, search_terms: list[str], target_location: s
                         company=item.get("company") or "",
                         location=item.get("location") or target_location,
                         url=url,
-                        description=item.get("snippet") or "",
+                        description=_description_with_metadata(
+                            item.get("snippet") or "",
+                            employment_type=item.get("type"),
+                            working_hours=item.get("workingHours"),
+                        ),
                         created_at=item.get("updated") or "",
                         remote=False,
                     )
@@ -223,11 +246,14 @@ async def fetch_lever(source: dict, search_terms: list[str], target_location: st
     for item in response.json():
         loc = (item.get("categories") or {}).get("location") or ""
         lists = item.get("lists") or []
-        description = " ".join(
-            [
-                item.get("descriptionPlain") or "",
-                *[(x.get("text") or "") + " " + (x.get("content") or "") for x in lists],
-            ]
+        description = _description_with_metadata(
+            " ".join(
+                [
+                    item.get("descriptionPlain") or "",
+                    *[(x.get("text") or "") + " " + (x.get("content") or "") for x in lists],
+                ]
+            ),
+            employment_type=(item.get("categories") or {}).get("commitment"),
         )
         jobs.append(
             Job(
