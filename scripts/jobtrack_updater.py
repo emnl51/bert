@@ -151,9 +151,36 @@ class JobTrackUpdater:
         match = re.search(r'^(?:DEFAULT_)?VERSION\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
         return match.group(1) if match else None
 
+    def _release_version(self, ref: str) -> str | None:
+        process = subprocess.run(
+            ["git", "-C", str(self.repo), "describe", "--tags", "--abbrev=0", ref],
+            cwd=self.repo,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+        if process.returncode != 0:
+            return None
+        version = process.stdout.strip().removeprefix("v")
+        if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", version):
+            return None
+        return version
+
+    def _running_version(self) -> str | None:
+        try:
+            with urllib.request.urlopen(self.health_url, timeout=4) as response:  # noqa: S310 - configured admin URL
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError):
+            return None
+        version = payload.get("version") if isinstance(payload, dict) else None
+        return version.removeprefix("v") if isinstance(version, str) and version else None
+
     def _refresh_repo_state(self, *, fetch: bool) -> dict[str, Any]:
         if fetch:
-            self._git("fetch", "--prune", "origin", self.branch, timeout=180)
+            self._git("fetch", "--prune", "--tags", "origin", self.branch, timeout=180)
         remote = f"origin/{self.branch}"
         current_branch = self._git("branch", "--show-current")
         local_sha = self._git("rev-parse", "HEAD")
@@ -165,8 +192,11 @@ class JobTrackUpdater:
         tracked_changes = self._git("status", "--porcelain", "--untracked-files=no")
         safe = current_branch == self.branch and commits_ahead == 0 and not tracked_changes
         deploy_pending = bool(self.state.get("deploy_pending"))
-        local_version = self._version_from_text((self.repo / "app/version.py").read_text(encoding="utf-8"))
-        remote_version = self._version_from_text(self._git("show", f"{remote}:app/version.py"))
+        source_local_version = self._version_from_text((self.repo / "app/version.py").read_text(encoding="utf-8"))
+        source_remote_version = self._version_from_text(self._git("show", f"{remote}:app/version.py"))
+        local_version = self._running_version() or self._release_version("HEAD") or source_local_version
+        remote_version = self._release_version(remote) or source_remote_version
+        release_pending = bool(local_version and remote_version and local_version != remote_version)
         values = {
             "branch": current_branch,
             "configured_branch": self.branch,
@@ -180,7 +210,7 @@ class JobTrackUpdater:
             "commits_behind": commits_behind,
             "working_tree_clean": not bool(tracked_changes),
             "safe_to_update": safe,
-            "update_available": safe and (commits_behind > 0 or deploy_pending),
+            "update_available": safe and (commits_behind > 0 or deploy_pending or release_pending),
         }
         with self._lock:
             self.state.update(values)
@@ -201,7 +231,10 @@ class JobTrackUpdater:
             if not state["safe_to_update"]:
                 message = "Update blocked: the branch diverged, changed, or contains tracked local modifications."
             elif state["update_available"]:
-                message = f"Update available: {state['commits_behind']} commit(s) behind."
+                if state["commits_behind"]:
+                    message = f"Update available: {state['commits_behind']} commit(s) behind."
+                else:
+                    message = f"Release update available: {state['local_version']} → {state['remote_version']}."
             else:
                 message = "Bert is up to date."
             self._set_state("idle", message, checked_at=utc_now())
@@ -256,7 +289,11 @@ class JobTrackUpdater:
                 self._set_state("updating_code", "Retrying deployment of the current commit…", deploy_pending=True)
 
             self._set_state("building", "Building the updated Bert image…", deploy_pending=True)
-            self._compose("build", "--pull", self.service, timeout=1800)
+            build_args = ["build", "--pull"]
+            if current.get("remote_version"):
+                build_args.extend(["--build-arg", f"APP_VERSION={current['remote_version']}"])
+            build_args.append(self.service)
+            self._compose(*build_args, timeout=1800)
             self._set_state("restarting", "Restarting the Bert service…", deploy_pending=True)
             self._compose("up", "-d", "--no-deps", self.service, timeout=300)
 

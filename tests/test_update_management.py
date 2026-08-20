@@ -128,6 +128,42 @@ def test_updater_detects_fast_forward_update_and_blocks_dirty_tree(tmp_path, mon
     assert status["update_available"] is False
 
 
+def test_updater_detects_release_tag_without_a_new_commit(tmp_path, monkeypatch):
+    remote = tmp_path / "remote.git"
+    repo = tmp_path / "bert"
+    publisher = tmp_path / "publisher"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, stdout=subprocess.PIPE)
+    subprocess.run(["git", "init", "-b", "main", str(repo)], check=True, stdout=subprocess.PIPE)
+    git(repo, "config", "user.email", "test@example.com")
+    git(repo, "config", "user.name", "Test")
+    (repo / "app").mkdir()
+    (repo / "app/version.py").write_text('DEFAULT_VERSION = "17.2.2"\n', encoding="utf-8")
+    (repo / "docker-compose.yml").write_text("services:\n  bert:\n    image: test\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "release-ready source")
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "-u", "origin", "main")
+    subprocess.run(["git", "clone", "-b", "main", str(remote), str(publisher)], check=True, stdout=subprocess.PIPE)
+    git(publisher, "tag", "18.0.1")
+    git(publisher, "push", "origin", "18.0.1")
+
+    monkeypatch.setenv("BERT_REPO_DIR", str(repo))
+    monkeypatch.setenv("BERT_BRANCH", "main")
+    monkeypatch.setenv("BERT_COMPOSE_FILES", "docker-compose.yml")
+    monkeypatch.setenv("BERT_UPDATE_STATE_FILE", str(tmp_path / "status.json"))
+    monkeypatch.setenv("BERT_UPDATE_TOKEN", "x" * 48)
+    monkeypatch.setattr(JobTrackUpdater, "_running_version", lambda self: "17.2.2")
+
+    updater = JobTrackUpdater()
+    status = updater.check()
+
+    assert status["commits_behind"] == 0
+    assert status["local_version"] == "17.2.2"
+    assert status["remote_version"] == "18.0.1"
+    assert status["update_available"] is True
+    assert "Release update available" in status["message"]
+
+
 def test_update_feature_is_wired_without_docker_socket_mount():
     main = Path("app/v16_main.py").read_text(encoding="utf-8")
     ui = Path("app/update-ui.js").read_text(encoding="utf-8")
@@ -142,6 +178,8 @@ def test_update_feature_is_wired_without_docker_socket_mount():
     assert "docker.sock" not in compose
     assert "shell=True" not in updater
     assert '"--ff-only"' in updater
+    assert '"--tags"' in updater
+    assert 'f"APP_VERSION={current[\'remote_version\']}"' in updater
     assert "source.backup(backup)" in updater
     assert "_wait_for_health" in updater
     assert "EnvironmentFile=/etc/bert-updater.env" in systemd
