@@ -10,7 +10,7 @@ from .positive_learning import apply_positive_boost, sync_application_events
 from .feedback_store import apply_learned_penalty
 from .profile_store import get_profile, upsert_profile_score
 from .providers import fetch_all_jobs
-from .ranker import assess_language_fit, blocklist_matches, calculate_overall_score, score_job
+from .ranker import assess_language_fit, blocklist_matches, calculate_overall_score, profile_english_level, score_job
 from .runtime import runtime_config
 from .search_job_store import (
     acquire_search_job_lock,
@@ -146,6 +146,7 @@ async def run_search_job(search_job_id: int) -> dict:
         matches = []
         language_profile = {
             "primary_working_language": "English",
+            "current_english_level": profile_english_level(profile),
             "current_german_level": profile["current_german_level"],
             "max_german_requirement": profile["max_german_requirement"],
             "prefer_german_growth": profile["prefer_german_growth"],

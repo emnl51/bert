@@ -1,5 +1,5 @@
 from app.models import Job
-from app.ranker import assess_language_fit, calculate_overall_score
+from app.ranker import assess_language_fit, calculate_overall_score, profile_english_level
 
 PROFILE = {
     "primary_working_language": "English",
@@ -100,3 +100,24 @@ def test_no_german_requirement_is_treated_as_optional():
     assert label == "german_growth"
     assert score >= 90
     assert any("optional" in reason for reason in reasons)
+
+
+def test_guided_profile_persists_and_reads_english_ability_metadata():
+    assert profile_english_level({"keywords": {"language": {"english_b1": 0}}}) == "b1"
+    assert profile_english_level({"current_english_level": "b2"}) == "b2"
+    assert profile_english_level({"keywords": {"language": {"unsupported": 0}}}) is None
+
+
+def test_english_requirement_above_guided_profile_level_is_a_stretch():
+    profile = {**PROFILE, "keywords": {"language": {"english_b1": 0}}}
+    score, label, reasons = assess_language_fit(make_job("English C1 required. German is a plus."), profile)
+    assert label == "stretch"
+    assert score < 60
+    assert any("configured B1" in reason for reason in reasons)
+
+
+def test_english_requirement_within_guided_profile_level_remains_eligible():
+    profile = {**PROFILE, "keywords": {"language": {"english_b2": 0}}}
+    score, label, _ = assess_language_fit(make_job("English B2 required. German is a plus."), profile)
+    assert label == "german_growth"
+    assert score >= 90
