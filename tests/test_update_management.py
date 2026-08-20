@@ -179,7 +179,7 @@ def test_update_feature_is_wired_without_docker_socket_mount():
     assert "shell=True" not in updater
     assert '"--ff-only"' in updater
     assert '"--tags"' in updater
-    assert 'f"APP_VERSION={current[\'remote_version\']}"' in updater
+    assert "f\"APP_VERSION={current['remote_version']}\"" in updater
     assert "source.backup(backup)" in updater
     assert "_wait_for_health" in updater
     assert "EnvironmentFile=/etc/bert-updater.env" in systemd
