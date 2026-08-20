@@ -1,0 +1,28 @@
+[Unit]
+Description=Bert fixed-purpose update agent
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+SupplementaryGroups=docker
+WorkingDirectory=/home/ubuntu/bert
+EnvironmentFile=/etc/bert-updater.env
+ExecStart=/usr/bin/python3 /home/ubuntu/bert/scripts/jobtrack_updater.py
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=bert-updater
+RuntimeDirectoryMode=0755
+StateDirectory=bert-updater
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/bert /var/lib/bert-updater /run/bert-updater
+
+[Install]
+WantedBy=multi-user.target

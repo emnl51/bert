@@ -28,6 +28,11 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def updater_setting(name: str, default: str = "") -> str:
+    """Prefer Bert settings while retaining support for older JobTrack installs."""
+    return os.environ.get(f"BERT_{name}") or os.environ.get(f"JOBTRACK_{name}") or default
+
+
 class UpdateFailure(RuntimeError):
     pass
 
@@ -36,13 +41,13 @@ class JobTrackUpdater:
     BUSY_STATES = {"checking", "backing_up", "updating_code", "building", "restarting", "verifying"}
 
     def __init__(self) -> None:
-        self.repo = Path(os.environ.get("JOBTRACK_REPO_DIR", "/home/ubuntu/jobtrack")).resolve()
-        self.branch = os.environ.get("JOBTRACK_BRANCH", "main").strip()
-        self.service = os.environ.get("JOBTRACK_SERVICE", "tracker").strip()
-        self.health_url = os.environ.get("JOBTRACK_HEALTH_URL", "http://127.0.0.1:8080/health").strip()
-        self.state_file = Path(os.environ.get("JOBTRACK_UPDATE_STATE_FILE", "/var/lib/jobtrack-updater/status.json"))
-        self.token = os.environ.get("JOBTRACK_UPDATE_TOKEN", "")
-        compose_names = os.environ.get("JOBTRACK_COMPOSE_FILES", "docker-compose.yml,docker-compose.updater.yml")
+        self.repo = Path(updater_setting("REPO_DIR", "/home/ubuntu/bert")).resolve()
+        self.branch = updater_setting("BRANCH", "main").strip()
+        self.service = updater_setting("SERVICE", "bert").strip()
+        self.health_url = updater_setting("HEALTH_URL", "http://127.0.0.1:8080/health").strip()
+        self.state_file = Path(updater_setting("UPDATE_STATE_FILE", "/var/lib/bert-updater/status.json"))
+        self.token = updater_setting("UPDATE_TOKEN")
+        compose_names = updater_setting("COMPOSE_FILES", "docker-compose.yml,docker-compose.updater.yml")
         self.compose_files = [self._repo_file(name.strip()) for name in compose_names.split(",") if name.strip()]
         self._lock = threading.RLock()
         self._worker: threading.Thread | None = None
@@ -143,7 +148,7 @@ class JobTrackUpdater:
 
     @staticmethod
     def _version_from_text(text: str) -> str | None:
-        match = re.search(r'^VERSION\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
+        match = re.search(r'^(?:DEFAULT_)?VERSION\s*=\s*["\']([^"\']+)["\']', text, re.MULTILINE)
         return match.group(1) if match else None
 
     def _refresh_repo_state(self, *, fetch: bool) -> dict[str, Any]:
@@ -198,7 +203,7 @@ class JobTrackUpdater:
             elif state["update_available"]:
                 message = f"Update available: {state['commits_behind']} commit(s) behind."
             else:
-                message = "JobTrack is up to date."
+                message = "Bert is up to date."
             self._set_state("idle", message, checked_at=utc_now())
         except Exception as exc:
             self._set_state("failed", f"Update check failed: {exc}", checked_at=utc_now(), finished_at=utc_now())
@@ -233,7 +238,7 @@ class JobTrackUpdater:
                 raise UpdateFailure("The repository is no longer in a safe update state")
 
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-            backup_path = f"/data/backups/jobtrack-web-update-{stamp}.db"
+            backup_path = f"/data/backups/bert-web-update-{stamp}.db"
             backup_code = (
                 "import pathlib,sqlite3,sys; "
                 "target=pathlib.Path(sys.argv[1]); target.parent.mkdir(parents=True,exist_ok=True); "
@@ -250,9 +255,9 @@ class JobTrackUpdater:
             else:
                 self._set_state("updating_code", "Retrying deployment of the current commit…", deploy_pending=True)
 
-            self._set_state("building", "Building the updated tracker image…", deploy_pending=True)
+            self._set_state("building", "Building the updated Bert image…", deploy_pending=True)
             self._compose("build", "--pull", self.service, timeout=1800)
-            self._set_state("restarting", "Restarting the tracker service…", deploy_pending=True)
+            self._set_state("restarting", "Restarting the Bert service…", deploy_pending=True)
             self._compose("up", "-d", "--no-deps", self.service, timeout=300)
 
             self._set_state("verifying", "Waiting for the health check…", deploy_pending=True)
@@ -353,13 +358,13 @@ class UpdateRequestHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     updater = JobTrackUpdater()
-    socket_path = Path(os.environ.get("JOBTRACK_UPDATE_SOCKET", "/run/jobtrack-updater/updater.sock"))
+    socket_path = Path(updater_setting("UPDATE_SOCKET", "/run/bert-updater/updater.sock"))
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     if socket_path.exists():
         socket_path.unlink()
     server = UnixHTTPServer(str(socket_path), UpdateRequestHandler)
     server.updater = updater  # type: ignore[attr-defined]
-    os.chmod(socket_path, int(os.environ.get("JOBTRACK_UPDATE_SOCKET_MODE", "0666"), 8))
+    os.chmod(socket_path, int(updater_setting("UPDATE_SOCKET_MODE", "0666"), 8))
     try:
         server.serve_forever(poll_interval=0.5)
     finally:

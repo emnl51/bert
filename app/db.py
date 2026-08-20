@@ -105,7 +105,6 @@ CREATE TABLE IF NOT EXISTS applications (
 );
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_applications_profile ON applications(owner_key, profile_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_job_state (
     owner_key TEXT NOT NULL,
