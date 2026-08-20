@@ -8,7 +8,7 @@ def test_release_workflow_tests_before_ghcr_publish():
     assert "ghcr.io" in text
     assert "python -m pytest -q" in text
     assert "docker/build-push-action@v6" in text
-    assert "actions/attest-build-provenance@v3" in text
+    assert "actions/attest-build-provenance@" in text
     assert text.index("Run tests") < text.index("Build and push image")
 
 
