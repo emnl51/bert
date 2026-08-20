@@ -9,7 +9,7 @@ from .notifier import send_email, send_telegram
 from .language_store import upsert_language_fit
 from .profile_store import ensure_profile_schema, list_profiles, upsert_profile_score
 from .providers import fetch_all_jobs
-from .ranker import assess_language_fit, blocklist_matches, calculate_overall_score, score_job
+from .ranker import assess_language_fit, blocklist_matches, calculate_overall_score, profile_english_level, score_job
 from .runtime import runtime_config
 from .source_analytics import ensure_source_analytics_schema, save_source_run_stats
 
@@ -79,6 +79,7 @@ async def run_search() -> dict:
 
                 language_profile = {
                     "primary_working_language": "English",
+                    "current_english_level": profile_english_level(profile),
                     "current_german_level": profile.get("current_german_level", "a2_b1"),
                     "max_german_requirement": profile.get("max_german_requirement", "b1"),
                     "prefer_german_growth": profile.get("prefer_german_growth", True),
