@@ -82,3 +82,67 @@ def test_part_time_search_terms_are_diversified_before_configured_terms():
     ]
     assert "werkstudent procurement" in terms
     assert not any("manager berlin" in term for term in terms)
+
+
+ENGINEERING_PROFILE = {
+    "name": "Engineering support / Part-time",
+    "slug": "engineering-part-time",
+    "keywords": {
+        "search": {"qualitätskontrolle teilzeit": 0},
+        "title": {"quality control": 30, "production planning": 28, "technical office": 25},
+        "format": {"teilzeit": 20, "minijob": 18, "part time": 16},
+    },
+}
+
+
+def test_engineering_profile_gets_its_own_bilingual_role_queries():
+    terms = search_terms_for_profile(ENGINEERING_PROFILE)
+    assert terms[0] == "qualitätskontrolle teilzeit"
+    assert any("quality" in term and "part time" in term for term in terms)
+    assert any("arbeitsvorbereitung" in term or "produktionsplanung" in term for term in terms)
+    assert any("sachbearbeitung" in term for term in terms[:6])
+    assert not any("werkstudent" in term or "supply chain" in term for term in terms)
+
+
+def test_part_time_is_confirmed_from_weekly_hours_and_afternoon_schedule():
+    ok, label, reasons = assess_employment_fit(
+        job("Qualitätsprüfer", "Arbeitszeit: 15-20 Stunden pro Woche, nachmittags."), ENGINEERING_PROFILE
+    )
+    assert ok is True
+    assert label == "part_time"
+    assert "schedule: 20 hours/week" in reasons
+    assert "schedule: afternoon/flexible" in reasons
+
+
+def test_workload_percentage_and_afternoon_start_are_recognized():
+    ok, label, reasons = assess_employment_fit(
+        job("Technische Sachbearbeitung", "Pensum 50%, Arbeitsbeginn ab 14 Uhr."), ENGINEERING_PROFILE
+    )
+    assert ok is True
+    assert label == "part_time"
+    assert "schedule: 50% workload" in reasons
+    assert "schedule: afternoon/flexible" in reasons
+
+
+def test_student_only_jobs_do_not_match_non_student_engineering_profile():
+    ok, label, _ = assess_employment_fit(
+        job("Werkstudent Qualitätssicherung", "Teilzeit 20 Stunden"), ENGINEERING_PROFILE
+    )
+    assert ok is False
+    assert label == "student_only"
+
+
+def test_negated_part_time_is_not_counted_as_an_available_working_arrangement():
+    ok, label, _ = assess_employment_fit(
+        job("Qualitätsprüfung", "Keine Teilzeit. Vollzeit 40 Stunden."), ENGINEERING_PROFILE
+    )
+    assert ok is False
+    assert label == "full_time"
+
+
+def test_full_time_or_part_time_alternatives_remain_eligible():
+    ok, label, _ = assess_employment_fit(
+        job("Qualitätsprüfung", "Vollzeit oder Teilzeit möglich."), ENGINEERING_PROFILE
+    )
+    assert ok is True
+    assert label == "part_time"

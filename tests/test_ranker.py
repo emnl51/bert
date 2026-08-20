@@ -72,3 +72,32 @@ def test_blocklist_reports_hard_exclusion_matches():
         description="Backend platform role",
     )
     assert blocklist_matches(job, {"blocklist": {"software developer": -100}}) == ["software developer"]
+
+
+def test_german_quality_role_matches_english_profile_title_family():
+    job = Job(
+        source="test",
+        external_id="quality-de",
+        title="Mitarbeiter Qualitätskontrolle Teilzeit",
+        company="Example GmbH",
+        location="Berlin",
+        url="https://example.com/quality",
+        description="Qualitätsprüfung und technische Dokumentation.",
+    )
+    score, reasons = score_job(job, {"title": {"quality control": 30}, "format": {"teilzeit": 15}}, LOCATIONS)
+    assert score >= 45
+    assert "role family: quality" in reasons
+
+
+def test_unrelated_role_does_not_receive_an_engineering_family_boost():
+    job = Job(
+        source="test",
+        external_id="office-unrelated",
+        title="Delivery Driver Teilzeit",
+        company="Example GmbH",
+        location="Berlin",
+        url="https://example.com/delivery",
+        description="Deliver packages throughout the city.",
+    )
+    _, reasons = score_job(job, {"title": {"quality control": 30}, "format": {"teilzeit": 15}}, LOCATIONS)
+    assert not any(reason.startswith("role family:") for reason in reasons)

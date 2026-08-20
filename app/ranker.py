@@ -1,4 +1,7 @@
+import re
+
 from .models import Job
+from .search_intent import matched_role_families, role_families_for_terms
 from .text_match import contains_affirmed_phrase, contains_phrase, normalize_text
 
 
@@ -33,6 +36,11 @@ def score_job(job: Job, keywords: dict[str, dict[str, int]], location_terms: lis
         if contains_affirmed_phrase(title, term):
             score += weight
             reasons.append(f"title: {term}")
+    requested_families = role_families_for_terms((keywords.get("title") or {}).keys())
+    for family in matched_role_families(title, requested_families):
+        if not any(reason.startswith("title:") for reason in reasons):
+            score += 20
+        reasons.append(f"role family: {family}")
     for term, weight in keywords.get("format", {}).items():
         if contains_affirmed_phrase(body, term):
             score += weight
@@ -82,6 +90,10 @@ ENGLISH_SIGNALS = (
     "international team",
     "international environment",
     "global team",
+    "gute englischkenntnisse",
+    "sehr gute englischkenntnisse",
+    "arbeitssprache englisch",
+    "englisch in wort und schrift",
 )
 GERMAN_OPTIONAL = (
     "german is a plus",
@@ -102,6 +114,10 @@ GERMAN_OPTIONAL = (
     "deutschkenntnisse sind von vorteil",
     "german skills are a plus",
     "knowledge of german is a plus",
+    "kein deutsch erforderlich",
+    "keine deutschkenntnisse erforderlich",
+    "deutsch nicht erforderlich",
+    "deutschkenntnisse nicht erforderlich",
 )
 GERMAN_LEARNING = (
     "willingness to learn german",
@@ -112,6 +128,8 @@ GERMAN_LEARNING = (
     "german classes",
     "german course",
     "language course",
+    "sprachkurs",
+    "deutsch lernen",
 )
 BASIC_GERMAN = (
     "basic german",
@@ -127,6 +145,8 @@ BASIC_GERMAN = (
     "b1-niveau",
     "b1 level",
     "german level b1",
+    "einfache deutschkenntnisse",
+    "deutschkenntnisse auf grundniveau",
 )
 B2_PREFERRED = (
     "b2 preferred",
@@ -168,6 +188,9 @@ GERMAN_HEAVY = (
     "deutsch zwingend erforderlich",
     "fließende deutschkenntnisse",
     "fliessende deutschkenntnisse",
+    "deutsch in wort und schrift",
+    "fließend deutsch",
+    "fliessend deutsch",
 )
 GENERIC_GERMAN_REQUIRED = (
     "german required",
@@ -178,6 +201,23 @@ GENERIC_GERMAN_REQUIRED = (
     "sehr gute deutschkenntnisse",
 )
 
+GERMAN_LEVEL_PATTERN = re.compile(
+    r"(?:deutsch(?:kenntnisse)?|german)(?:\s+(?:auf|at|level|niveau|kenntnisse|skills|mindestens|minimum)){0,3}"
+    r"[\s:()-]*(a1|a2|b1|b2|c1|c2)"
+    r"|(?<!\w)(a1|a2|b1|b2|c1|c2)[\s-]*(?:niveau|level)?\s*(?:deutsch(?:kenntnisse)?|german)",
+    re.IGNORECASE,
+)
+LEVEL_RANK = {"a1": 1, "a2": 2, "a2_b1": 2, "b1": 3, "b2": 4, "c1": 5, "c2": 6}
+
+
+def _german_levels(text: str) -> list[str]:
+    levels = []
+    for match in GERMAN_LEVEL_PATTERN.finditer(text):
+        phrase = match.group(0)
+        if contains_affirmed_phrase(text, phrase):
+            levels.append((match.group(1) or match.group(2)).lower())
+    return levels
+
 
 def assess_language_fit(job: Job, profile: dict) -> tuple[int, str, list[str]]:
     """Classify language requirements for an English-first A2/B1 German profile."""
@@ -185,13 +225,17 @@ def assess_language_fit(job: Job, profile: dict) -> tuple[int, str, list[str]]:
     english = _has_any(body, ENGLISH_SIGNALS)
     german_optional = _has_any(body, GERMAN_OPTIONAL)
     german_learning = _has_any(body, GERMAN_LEARNING)
-    basic_german = _has_any(body, BASIC_GERMAN)
+    explicit_levels = _german_levels(body)
+    basic_german = _has_any(body, BASIC_GERMAN) or any(level in ("a1", "a2", "b1") for level in explicit_levels)
     b2_preferred = _has_any(body, B2_PREFERRED)
-    b2 = _has_any(body, B2_SIGNALS)
-    german_heavy = _has_any(body, GERMAN_HEAVY)
-    generic_required = _has_any(body, GENERIC_GERMAN_REQUIRED)
+    b2 = any(contains_affirmed_phrase(body, phrase) for phrase in B2_SIGNALS) or "b2" in explicit_levels
+    german_heavy = any(contains_affirmed_phrase(body, phrase) for phrase in GERMAN_HEAVY) or any(
+        level in ("c1", "c2") for level in explicit_levels
+    )
+    generic_required = any(contains_affirmed_phrase(body, phrase) for phrase in GENERIC_GERMAN_REQUIRED)
     prefer_growth = bool(profile.get("prefer_german_growth", True))
     max_requirement = str(profile.get("max_german_requirement", "b1")).lower()
+    max_rank = LEVEL_RANK.get(max_requirement, LEVEL_RANK["b1"])
 
     reasons: list[str] = []
     if english:
@@ -206,6 +250,11 @@ def assess_language_fit(job: Job, profile: dict) -> tuple[int, str, list[str]]:
     if german_heavy:
         reasons.append("C1/fluent/native German signal")
         return 15, "german_heavy", reasons
+
+    highest_basic = max((LEVEL_RANK[level] for level in explicit_levels if level in LEVEL_RANK), default=0)
+    if highest_basic and highest_basic > max_rank and highest_basic <= LEVEL_RANK["b1"]:
+        reasons.append("German level exceeds configured maximum")
+        return 52, "stretch", reasons
 
     if b2:
         if max_requirement == "b2":
