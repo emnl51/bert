@@ -1,5 +1,7 @@
 from app import db
+from app.feedback_store import record_feedback
 from app.models import Job
+from app.profile_store import ensure_profile_schema, save_profile
 
 
 def setup_db(tmp_path, monkeypatch):
@@ -53,6 +55,21 @@ def test_application_progress_is_preserved_if_job_decision_changes(tmp_path, mon
     assert db.application_stats()["interview"] == 1
     db.save_application(job.key, "offer")
     assert db.application_stats()["offer"] == 1
+
+
+def test_applications_are_scoped_to_the_profile_that_created_them(tmp_path, monkeypatch):
+    job = setup_db(tmp_path, monkeypatch)
+    ensure_profile_schema()
+    planning_profile = save_profile({"name": "Planning", "slug": "planning"})
+    quality_profile = save_profile({"name": "Quality", "slug": "quality"})
+
+    record_feedback(job.key, "suitable", profile_id=planning_profile)
+
+    planning_apps = db.list_applications(profile_id=planning_profile)
+    assert [app["job_key"] for app in planning_apps] == [job.key]
+    assert db.list_applications(profile_id=quality_profile) == []
+    assert db.application_stats(profile_id=planning_profile)["to_apply"] == 1
+    assert db.application_stats(profile_id=quality_profile)["total"] == 0
 
 
 def test_rescan_preserves_review_decision(tmp_path, monkeypatch):

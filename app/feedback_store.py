@@ -178,10 +178,11 @@ def record_feedback(job_key, suitability, reason="", note="", learn=True, profil
             con.execute("UPDATE jobs SET decision=?,decision_at=? WHERE job_key=?", (decision, now, job_key))
         if suitability == "suitable":
             con.execute(
-                """INSERT INTO applications(owner_key,user_id,job_key,status,created_at,updated_at)
-                   VALUES(?,?,?,'to_apply',?,?) ON CONFLICT(owner_key,job_key)
-                   DO UPDATE SET updated_at=excluded.updated_at""",
-                (owner, user_id, job_key, now, now),
+                """INSERT INTO applications(owner_key,user_id,profile_id,job_key,status,created_at,updated_at)
+                   VALUES(?,?,?,?,'to_apply',?,?) ON CONFLICT(owner_key,job_key)
+                   DO UPDATE SET profile_id=COALESCE(applications.profile_id,excluded.profile_id),
+                                 updated_at=excluded.updated_at""",
+                (owner, user_id, profile_id, job_key, now, now),
             )
     positive_ids = []
     if suitability == "suitable" and learn:

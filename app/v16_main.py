@@ -292,6 +292,7 @@ def dashboard(request: Request, actor: dict = Depends(require_workspace)):
         '<script src="/review-ui.js"></script>'
         '<script src="/legacy-compat-ui.js"></script>'
         '<script src="/profile-ui.js"></script>'
+        '<script src="/applications-profile-ui.js"></script>'
         '<script src="/search-job-ui.js"></script>'
         '<script src="/intelligence-ui.js"></script>'
         '<script src="/intelligence-settings-ui.js"></script>'
