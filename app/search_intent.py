@@ -25,6 +25,7 @@ ROLE_FAMILIES: dict[str, tuple[str, ...]] = {
         "wareneingangsprüfung",
     ),
     "production": (
+        "production",
         "production assistant",
         "production support",
         "production coordinator",
@@ -36,6 +37,8 @@ ROLE_FAMILIES: dict[str, tuple[str, ...]] = {
         "mitarbeiter produktion",
         "fertigungsmitarbeiter",
         "fertigungsassistenz",
+        "produktion",
+        "fertigung",
     ),
     "planning": (
         "production planner",

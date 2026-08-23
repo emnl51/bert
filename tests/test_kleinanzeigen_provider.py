@@ -9,6 +9,7 @@ from app.kleinanzeigen_provider import (
     fetch_kleinanzeigen,
     parse_kleinanzeigen_detail_html,
     parse_kleinanzeigen_search_html,
+    prepare_kleinanzeigen_search_terms,
 )
 from app.providers import PROVIDERS
 from app.source_catalog import SOURCE_CATALOG
@@ -156,7 +157,7 @@ def test_kleinanzeigen_source_ui_supports_both_full_and_part_time():
     text = open("app/source-ui.js", encoding="utf-8").read()
     assert "Full-time and part-time" in text
     assert "working_arrangement" in text
-    assert "Complete descriptions feed language, work-type and card analysis." in text
+    assert "Incomplete cards are enriched first" in text
     assert "Last 7 days" in text
     assert "Last 30 days" in text
 
@@ -175,3 +176,33 @@ def test_kleinanzeigen_listing_age_keeps_unknown_dates_but_rejects_known_old_dat
     assert kleinanzeigen_provider._within_max_age(job, 30, date(2026, 8, 23)) is False
     job.created_at = "Auf Anfrage"
     assert kleinanzeigen_provider._within_max_age(job, 7, date(2026, 8, 23)) is True
+
+
+def test_balanced_active_search_interleaves_profile_and_german_work_time_queries():
+    terms = prepare_kleinanzeigen_search_terms(["Quality Control", "Production Planning"], "both", 8)
+    assert terms[:4] == [
+        "Quality Control",
+        "Production Planning",
+        "Qualitätsprüfer",
+        "Arbeitsvorbereitung",
+    ]
+    assert "Quality Control Vollzeit" in terms
+    assert "Production Planning Vollzeit" in terms
+    assert len(terms) == 8
+
+
+def test_focused_active_search_respects_source_arrangement_without_expansion():
+    assert prepare_kleinanzeigen_search_terms(["Quality Control"], "part_time", 8, "focused") == [
+        "Quality Control Teilzeit"
+    ]
+
+
+def test_detail_enrichment_prioritizes_cards_missing_analysis_evidence():
+    complete = parse_kleinanzeigen_search_html(SEARCH_HTML)[0]
+    incomplete = parse_kleinanzeigen_search_html(SEARCH_HTML)[0]
+    complete.external_id = "complete"
+    complete.description = "Vollzeit " + ("detailed quality inspection responsibilities " * 8)
+    incomplete.external_id = "incomplete"
+    incomplete.description = ""
+    incomplete.company = ""
+    assert sorted([complete, incomplete], key=kleinanzeigen_provider._detail_priority)[0].external_id == "incomplete"

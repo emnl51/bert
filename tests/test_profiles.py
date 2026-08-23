@@ -59,6 +59,10 @@ def test_same_job_keeps_independent_profile_scores(tmp_path, monkeypatch):
     assert rows_b[0]["overall_score"] == 47
     assert rows_a[0]["language_label"] == "english_first"
     assert rows_b[0]["language_label"] == "stretch"
+    assert rows_a[0]["primary_category"] == "Procurement"
+    assert "employment_label" in rows_a[0]
+    assert "freshness_label" in rows_a[0]
+    assert "description_preview" in rows_a[0]
 
 
 def test_job_ad_language_can_be_filtered_independently(tmp_path, monkeypatch):

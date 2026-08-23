@@ -30,6 +30,18 @@ _INACTIVE_RE = re.compile(
     r"ad is no longer available)"
 )
 _ARRANGEMENTS = {"both", "full_time", "part_time"}
+_QUERY_COVERAGE = {"focused", "balanced", "broad"}
+_LOCALIZED_QUERIES = {
+    "quality control": ("Qualitätsprüfer", "Qualitätskontrolle"),
+    "quality inspector": ("Qualitätsprüfer", "Qualitätskontrolle"),
+    "quality technician": ("Qualitätstechniker", "Qualitätsprüfer"),
+    "quality engineer": ("Qualitätsingenieur", "Qualitätssicherung"),
+    "production": ("Produktionsmitarbeiter", "Mitarbeiter Fertigung"),
+    "production assistant": ("Produktionsassistenz", "Produktionsmitarbeiter"),
+    "production planning": ("Arbeitsvorbereitung", "Produktionsplanung"),
+    "process engineer": ("Prozessingenieur", "Prozesstechnik"),
+    "technical office": ("Technische Sachbearbeitung", "Projektassistenz"),
+}
 
 
 def _clean(value: str) -> str:
@@ -59,6 +71,46 @@ def _query_for_arrangement(query: str, arrangement: str) -> str:
     if arrangement == "full_time" and not _FULL_TIME_RE.search(query):
         return f"{query} Vollzeit"
     return query
+
+
+def prepare_kleinanzeigen_search_terms(
+    search_terms: list[str], arrangement: str, max_terms: int, coverage: str = "balanced"
+) -> list[str]:
+    """Create a bounded, profile-led set of Kleinanzeigen queries.
+
+    Focused mode preserves profile phrases. Balanced mode adds one German market
+    alias and full/part-time variants for generic phrases. Broad mode may use a
+    second German alias while the source-level query budget remains authoritative.
+    """
+    coverage = _clean(coverage).lower()
+    if coverage not in _QUERY_COVERAGE:
+        coverage = "balanced"
+    arrangement = _arrangement(arrangement)
+    configured = list(dict.fromkeys(_clean(term) for term in search_terms if _clean(term)))
+    batches: list[list[str]] = []
+    for term in configured:
+        explicit_format = bool(_PART_TIME_RE.search(term) or _FULL_TIME_RE.search(term))
+        variants = [_query_for_arrangement(term, arrangement)]
+        normalized = _clean(re.sub(_EMPLOYMENT_RE, "", term)).lower()
+        aliases = _LOCALIZED_QUERIES.get(normalized, ())
+        if coverage != "focused":
+            variants.extend(_query_for_arrangement(alias, arrangement) for alias in aliases[:1])
+            if arrangement == "both" and not explicit_format:
+                variants.extend((f"{term} Vollzeit", f"{term} Teilzeit"))
+                variants.extend(f"{alias} Vollzeit" for alias in aliases[:1])
+                variants.extend(f"{alias} Teilzeit" for alias in aliases[:1])
+            if coverage == "broad":
+                variants.extend(_query_for_arrangement(alias, arrangement) for alias in aliases[1:2])
+        batches.append(list(dict.fromkeys(_clean(value) for value in variants if _clean(value))))
+
+    terms: list[str] = []
+    for index in range(max((len(batch) for batch in batches), default=0)):
+        for batch in batches:
+            if index < len(batch) and batch[index] not in terms:
+                terms.append(batch[index])
+                if len(terms) >= max_terms:
+                    return terms
+    return terms
 
 
 def _matches_arrangement(job: Job, arrangement: str) -> bool:
@@ -97,6 +149,21 @@ def _within_max_age(job: Job, max_age_days: int, today: date | None = None) -> b
         return True
     published = _listing_date(job.created_at, today)
     return published is None or published >= (today or datetime.now().date()) - timedelta(days=max_age_days)
+
+
+def _detail_priority(job: Job) -> tuple[int, int]:
+    """Prioritize cards missing evidence needed by categorization and scoring."""
+    text = f"{job.title} {job.description}"
+    missing = sum(
+        (
+            len(_clean(job.description)) < 120,
+            not _clean(job.company),
+            not _clean(job.location),
+            not _clean(job.created_at),
+            not _EMPLOYMENT_RE.search(text),
+        )
+    )
+    return (-missing, len(_clean(job.description)))
 
 
 def _tls_get(url: str, headers: dict[str, str]) -> tuple[int, str]:
@@ -269,8 +336,8 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
     location = _clean(config.get("location_name") or target_location)
     location_id = str(config.get("location_id") or "").strip()
     arrangement = _arrangement(config.get("working_arrangement", "both"))
-    terms = [_query_for_arrangement(_clean(term), arrangement) for term in search_terms if _clean(term)][:max_terms]
-    terms = list(dict.fromkeys(terms))
+    coverage = str(config.get("query_coverage") or "balanced")
+    terms = prepare_kleinanzeigen_search_terms(search_terms, arrangement, max_terms, coverage)
     if not terms:
         raise RuntimeError("Kleinanzeigen requires at least one profile-specific search phrase")
 
@@ -300,7 +367,8 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
                     await asyncio.sleep(delay)
 
         inactive_ids: set[str] = set()
-        for job in jobs[:detail_limit]:
+        detail_jobs = sorted(jobs, key=_detail_priority)[:detail_limit]
+        for job in detail_jobs:
             try:
                 html = await _response_html(client, job.url, headers, detail=True)
                 if _INACTIVE_RE.search(html):
