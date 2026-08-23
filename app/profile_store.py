@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .db import connection
+from .job_metadata import classify_job_metadata
 
 PROFILE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS search_profiles (
@@ -488,7 +489,7 @@ def list_jobs_for_profile(
     params = [owner_key, owner_key, *params, limit]
     with connection() as con:
         rows = con.execute(
-            f"""SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.created_at,j.first_seen,
+            f"""SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.description,j.created_at,j.first_seen,j.remote,
                                    COALESCE(js.decision,'unreviewed') AS decision,js.decision_at,
                                    j.content_language,j.content_language_confidence,j.content_language_source,
                                    s.job_score AS score,s.language_score,s.overall_score,s.language_label,s.reasons_json,s.language_reasons_json,
@@ -505,5 +506,8 @@ def list_jobs_for_profile(
         item = dict(row)
         item["reasons"] = json.loads(item.pop("reasons_json") or "[]")
         item["language_reasons"] = json.loads(item.pop("language_reasons_json") or "[]")
+        item.update(classify_job_metadata(item))
+        item.pop("description", None)
+        item["remote"] = bool(item["remote"])
         out.append(item)
     return out
