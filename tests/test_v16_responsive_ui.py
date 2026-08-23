@@ -101,6 +101,18 @@ def test_initial_legacy_jobs_request_survives_review_table_replacement():
     assert "jobsBody.innerHTML=d.jobs.length" in template
 
 
+def test_initial_legacy_settings_request_skips_modern_workspace_and_guards_removed_controls():
+    template = Path("app/templates/index.html").read_text(encoding="utf-8")
+    guard = "if(document.body.dataset.jobReviewUi==='true')return"
+    request = "const s=await api('/api/settings')"
+    settings_function = template.index("async function loadSettings()")
+    guard_position = template.index(guard, settings_function)
+    request_position = template.index(request, settings_function)
+    assert guard_position < request_position
+    assert "if($('jobsMinScore'))$('jobsMinScore').value" in template
+    assert "const frequency=$('schedule_frequency');if(!frequency)return" in template
+
+
 def test_candidate_assignment_ui_restores_saved_mapping():
     js = Path("app/intelligence-ui.js").read_text(encoding="utf-8")
     assert "assignments=d.assignments||[]" in js
