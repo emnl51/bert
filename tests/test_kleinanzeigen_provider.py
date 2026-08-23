@@ -64,6 +64,7 @@ def test_kleinanzeigen_search_parser_maps_job_and_employment_metadata():
     assert job.external_id == "3491213154"
     assert job.company == "Example GmbH"
     assert job.location == "10115 Berlin - Mitte"
+    assert job._kleinanzeigen_distance_km == 2
     assert job.url.startswith("https://www.kleinanzeigen.de/s-anzeige/")
     assert "Employment type: Teilzeit; 25 Stunden pro Woche" in job.description
 
@@ -160,6 +161,23 @@ def test_kleinanzeigen_source_ui_supports_both_full_and_part_time():
     assert "Incomplete cards are enriched first" in text
     assert "Last 7 days" in text
     assert "Last 30 days" in text
+    assert "Bert verifies card distances" in text
+
+
+def test_exact_city_location_filter_rejects_other_cities_and_accepts_berlin_districts():
+    berlin_job = parse_kleinanzeigen_search_html(SEARCH_HTML)[0]
+    potsdam_job = parse_kleinanzeigen_search_html(
+        SEARCH_HTML.replace("10115 Berlin - Mitte (2 km)", "14467 Potsdam (28 km)")
+    )[0]
+    hamburg_job = parse_kleinanzeigen_search_html(
+        SEARCH_HTML.replace("10115 Berlin - Mitte (2 km)", "20095 Hamburg (255 km)")
+    )[0]
+
+    assert kleinanzeigen_provider._matches_location(berlin_job, "Berlin", "3331", 0) is True
+    assert kleinanzeigen_provider._matches_location(potsdam_job, "Berlin", "3331", 0) is False
+    assert kleinanzeigen_provider._matches_location(potsdam_job, "Berlin", "", 40) is False
+    assert kleinanzeigen_provider._matches_location(potsdam_job, "Berlin", "3331", 40) is True
+    assert kleinanzeigen_provider._matches_location(hamburg_job, "Berlin", "3331", 40) is False
 
 
 def test_kleinanzeigen_listing_age_supports_relative_and_german_dates():

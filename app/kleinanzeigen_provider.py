@@ -124,6 +124,27 @@ def _matches_arrangement(job: Job, arrangement: str) -> bool:
     return not (part_time and not full_time)
 
 
+def _matches_location(job: Job, location: str, location_id: str, radius_km: int) -> bool:
+    """Reject promoted ads that Kleinanzeigen injects beyond the requested area."""
+    target = _slug(location)
+    if not location or target == "jobs":
+        return True
+
+    actual = _slug(job.location)
+    if f"-{target}-" in f"-{actual}-":
+        return True
+
+    postal_match = re.search(r"(?<!\d)(\d{5})(?!\d)", job.location)
+    if target == "berlin" and postal_match and 10115 <= int(postal_match.group(1)) <= 14199:
+        return True
+
+    distance = getattr(job, "_kleinanzeigen_distance_km", None)
+    valid_location_id = bool(re.sub(r"\D", "", str(location_id or "")))
+    if valid_location_id and radius_km > 0 and distance is not None:
+        return distance <= radius_km
+    return False
+
+
 def _listing_date(value: str, today: date | None = None) -> date | None:
     today = today or datetime.now().date()
     value = _clean(value)
@@ -271,6 +292,8 @@ def parse_kleinanzeigen_search_html(html: str, source_name: str = "Kleinanzeigen
 
         location_node = card.select_one(".aditem-main--top--left")
         location = _clean(location_node.get_text(" ") if location_node else "")
+        distance_match = re.search(r"\((\d+(?:[.,]\d+)?)\s*km\)\s*$", location, flags=re.I)
+        distance_km = float(distance_match.group(1).replace(",", ".")) if distance_match else None
         location = re.sub(r"\s*\(\d+(?:[.,]\d+)?\s*km\)\s*$", "", location, flags=re.I)
         created_node = card.select_one(".aditem-main--top--right")
         created_at = _clean(created_node.get_text(" ") if created_node else "")
@@ -280,19 +303,19 @@ def parse_kleinanzeigen_search_html(html: str, source_name: str = "Kleinanzeigen
         description = max([summary, *descriptions], key=len, default="")
         company = _card_company(card)
         combined = f"{title} {description}"
-        jobs.append(
-            Job(
-                source=source_name,
-                external_id=external_id,
-                title=title,
-                company=company,
-                location=location,
-                url=url,
-                description=_description_with_signals(description, title),
-                created_at=created_at,
-                remote=bool(re.search(r"(?i)\b(homeoffice|remote|mobiles arbeiten)\b", combined)),
-            )
+        job = Job(
+            source=source_name,
+            external_id=external_id,
+            title=title,
+            company=company,
+            location=location,
+            url=url,
+            description=_description_with_signals(description, title),
+            created_at=created_at,
+            remote=bool(re.search(r"(?i)\b(homeoffice|remote|mobiles arbeiten)\b", combined)),
         )
+        job._kleinanzeigen_distance_km = distance_km
+        jobs.append(job)
     return jobs
 
 
@@ -390,4 +413,5 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
         if job.external_id not in inactive_ids
         and _within_max_age(job, max_age_days)
         and _matches_arrangement(job, arrangement)
+        and _matches_location(job, location, location_id, radius)
     ]
