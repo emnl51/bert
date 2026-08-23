@@ -15,6 +15,7 @@
 - Makes the complete job card keyboard-operable while keeping decision actions independent.
 - Moves language and theme preferences from the sidebar footer into a dedicated Settings → Interface page.
 - Replaces expandable sidebar groups with a flatter, quieter navigation structure that exposes destinations directly.
+- Reorganizes sidebar destinations under Control Panel, Jobs, Job Review, Settings, and Administration.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
 ## 19.0.0 — Application Workspace
