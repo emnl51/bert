@@ -87,6 +87,14 @@ def test_legacy_jobs_refresh_is_routed_to_review_queue():
     assert "window.loadReviewJobs" in compat
 
 
+def test_initial_legacy_jobs_request_survives_review_table_replacement():
+    template = Path("app/templates/index.html").read_text(encoding="utf-8")
+    assert "$('jobsMinScore')?.value" in template
+    assert "$('jobsDecision')?.value" in template
+    assert "const jobsBody=$('jobsBody');if(!jobsBody)return" in template
+    assert "jobsBody.innerHTML=d.jobs.length" in template
+
+
 def test_candidate_assignment_ui_restores_saved_mapping():
     js = Path("app/intelligence-ui.js").read_text(encoding="utf-8")
     assert "assignments=d.assignments||[]" in js
