@@ -511,3 +511,34 @@ def list_jobs_for_profile(
         item["remote"] = bool(item["remote"])
         out.append(item)
     return out
+
+
+def get_job_for_profile(job_key: str, profile_id: int, user_id: int | None = None) -> dict[str, Any] | None:
+    """Return one complete job only when it belongs to the user's search profile."""
+    ensure_profile_schema(user_id)
+    if not get_profile(profile_id, user_id=user_id):
+        return None
+    owner_key = "admin" if user_id is None else f"user:{int(user_id)}"
+    with connection() as con:
+        row = con.execute(
+            """SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.description,j.created_at,
+                              j.first_seen,j.remote,j.content_language,j.content_language_confidence,
+                              j.content_language_source,COALESCE(js.decision,'unreviewed') AS decision,
+                              js.decision_at,s.job_score AS score,s.language_score,s.overall_score,
+                              s.language_label,s.reasons_json,s.language_reasons_json,
+                              a.status AS application_status,a.applied_at
+                       FROM job_profile_scores s
+                       JOIN jobs j ON j.job_key=s.job_key
+                       LEFT JOIN user_job_state js ON js.owner_key=? AND js.job_key=j.job_key
+                       LEFT JOIN applications a ON a.owner_key=? AND a.job_key=j.job_key
+                       WHERE s.profile_id=? AND j.job_key=?""",
+            (owner_key, owner_key, profile_id, job_key),
+        ).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    item["reasons"] = json.loads(item.pop("reasons_json") or "[]")
+    item["language_reasons"] = json.loads(item.pop("language_reasons_json") or "[]")
+    item.update(classify_job_metadata(item))
+    item["remote"] = bool(item["remote"])
+    return item

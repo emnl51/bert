@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased — Application Workspace
+## Unreleased
+
+### Added
+
+- Adds a persistent Light, Dark, and System theme selector to the main workspace and sign-in screen.
+- Adds a focused job-detail dialog with the complete description, fit evidence, work schedule, source, date, and original-listing link.
+- Adds an idempotent release workflow that turns published GitHub Release notes into an automated changelog pull request.
+
+### Changed
+
+- Simplifies Job Review cards to the information needed for scanning and moves dense metadata into the detail view.
+- Refreshes shared colors, spacing, controls, focus states, tables, cards, and responsive layouts with accessible design tokens.
+- Makes the complete job card keyboard-operable while keeping decision actions independent.
+
+## 19.0.0 — Application Workspace
 
 ### Added
 
@@ -20,7 +34,117 @@
 
 - Adds the application workspace columns, indexes, and event table in place while preserving existing applications.
 
-## v17.2.2  — Multi-User Workspaces and Matching Quality
+## 18.2.7 — Settings Startup Stability
+
+### Fixed
+
+- Prevents the initial settings refresh from writing into controls before their page fragment exists.
+- Keeps page reloads from failing with null-element JavaScript errors.
+
+## 18.2.6 — Provider Analytics and Job Loading
+
+### Changed
+
+- Hardens provider funnel analytics against incomplete or unexpected provider records.
+- Modernizes job loading so the review workspace remains responsive and safely handles missing elements.
+
+## 18.2.5 — Job Review Startup Stability
+
+### Fixed
+
+- Removes the initial Job Review refresh race that could render results before the jobs table was mounted.
+- Makes repeated page refreshes safe when optional UI fragments are not active.
+
+## 18.2.4 — Kleinanzeigen Filter Analytics
+
+### Added
+
+- Adds Kleinanzeigen rejection and acceptance counts to provider analytics.
+- Exposes the provider's location, age, employment-format, and parsing funnel for troubleshooting low result counts.
+
+## 18.2.3 — Kleinanzeigen Location Precision
+
+### Fixed
+
+- Rejects Kleinanzeigen listings outside the explicitly configured city or area.
+- Keeps city validation separate from the radius setting so a Berlin search does not admit unrelated cities.
+
+## 18.2.2 — Kleinanzeigen Search and Job Cards
+
+### Changed
+
+- Expands active Kleinanzeigen search coverage while retaining conservative request limits.
+- Categorizes work schedule, employment type, address, language, publication date, and description data for existing job cards.
+- Improves job-card metadata display and provider diagnostics.
+
+### Fixed
+
+- Aligns provider regression tests and CI formatting checks with the richer metadata model.
+
+## 18.2.1 — Kleinanzeigen Profile Compatibility
+
+### Added
+
+- Adds full-time and part-time selection to Kleinanzeigen source configuration.
+- Adds configurable listing-age windows such as the last week or last month.
+
+### Changed
+
+- Maps Search Profile phrases, target roles, work arrangements, and language preferences to Kleinanzeigen searches.
+- Filters stale or inactive listings and normalizes location, employment format, address, language, and job-type signals.
+
+## 18.2.0 — Experimental Kleinanzeigen Jobs Source
+
+### Added
+
+- Adds an opt-in Kleinanzeigen Jobs provider with conservative paging, request delays, and safe failure handling.
+- Parses public job listing links and content into Bert's common job record format.
+
+### Maintenance
+
+- Updates Python requirements and automated dependency versions used by CI and container builds.
+
+## 18.1.1 — Guided Search Profile Builder
+
+### Added
+
+- Adds a step-by-step profile guide for target positions, roles, working arrangements, language level, provider phrases, and scoring keywords.
+- Helps users express full-time, part-time, Minijob, and qualification-level preferences in provider-compatible terms.
+
+## 18.1.0 — Profile-Aware Search and Release Updates
+
+### Changed
+
+- Improves position, role, working-time, and language matching across provider search, filtering, and scoring.
+- Refines the job-list and job-card UI for clearer fit evidence and faster review.
+- Makes the source updater aware of Git release tags even when a release does not add a new commit.
+- Applies the resolved release version to source-built containers and the UI.
+
+## 18.0.1 — Release-Aware Updater and Navigation
+
+### Added
+
+- Displays the installed and available GitHub Release versions in the update interface.
+- Detects release tags independently from branch commit distance.
+
+### Changed
+
+- Repairs the restricted host updater connection and release-version build propagation.
+- Refines the sidebar and responsive navigation for clearer workspace grouping.
+- Hardens GitHub workflow permissions for CodeQL and release publishing.
+
+## 18.0.0 — Profile-Scoped Applications
+
+### Added
+
+- Separates Applications by Search Profile so each job-search strategy has its own pipeline.
+
+### Changed
+
+- Strengthens user-workspace isolation across application and profile operations.
+- Updates dependency and GitHub Action versions and expands regression coverage.
+
+## 17.2.2 — Multi-User Workspaces and Matching Quality
 
 ### Added
 
@@ -39,7 +163,7 @@
 - Restricts system email settings and test operations to administrators.
 - Records system email configuration changes in the audit log.
 
-## v17.2.0 — Multi-User Workspaces and Matching Quality
+## 17.2.0 — Multi-User Workspaces and Matching Quality
 
 ### Added
 
@@ -78,7 +202,18 @@
 - Adds backward-compatible user ownership columns and indexes while preserving existing administrator data.
 - Extends backup and recovery validation to the new account and user-scoped tables.
 
-## v17.0.1 — Release Metadata Alignment
+## 17.1 — Account Recovery and Workspace Isolation
+
+### Added
+
+- Adds database recovery tooling and registered-user account support.
+- Adds per-user isolation for profiles, searches, decisions, applications, and related workspace data.
+
+### Changed
+
+- Includes the internal `17.0.1` metadata-alignment change that was not published as a separate Git tag.
+
+## 17.0.1 (untagged) — Release Metadata Alignment
 
 ### Fixed
 
@@ -87,14 +222,14 @@
 - Updates the tagged-image and current-version examples in the README.
 - Blocks release-container publishing when the release tag does not match `app/version.py`.
 
-## v17.0.0 — Bert Branding
+## 17.0.0 — Bert Branding
 
 - Completes the public-facing rename from JobTrack to Bert.
 - Reads the sidebar product name from `APP_NAME` instead of hard-coding the legacy name.
 - Reads the complete sidebar version from the backend instead of displaying a fixed major version.
 - Keeps the application title, health response and navigation shell on one centralized version source.
 
-## v16.8.2 — Bert Deployment Rename and CI Expansion
+## 16.8.2 — Bert Deployment Rename and CI Expansion
 
 - Renames the Docker service, container user, persistent volume and deployment examples from JobTrack to Bert.
 - Updates GHCR and source-installation examples for the Bert repository and image.
@@ -102,19 +237,19 @@
 - Aligns release-container and update-management tests with the renamed deployment resources.
 - Applies Ruff formatting fixes required by the expanded CI checks.
 
-## v16.8.1 — Release Automation
+## 16.8.1 — Release Automation
 
 - Adds a GitHub Actions workflow that builds Python release distributions when a GitHub Release is published.
 - Uploads the built distributions as workflow artifacts and prepares them for trusted PyPI publishing.
 
-## v16.8 — Security and Configuration Hardening
+## 16.8 — Security and Configuration Hardening
 
 - Adds per-client failed-login rate limiting with temporary blocking after repeated failures.
 - Adds same-origin protection for state-changing browser requests.
 - Restricts the SQLite database, WAL and shared-memory files to owner-only permissions when possible.
 - Restores a complete `.env.example` with the supported application configuration.
 
-## v16.7.0 — Jobs Workspace and Grouped Navigation
+## 16.7 — Jobs Workspace and Grouped Navigation
 
 - Reorganizes navigation into Dashboard, Jobs, Intelligence, Settings and Administration groups.
 - Replaces the Search Job modal with a searchable Jobs list and full-page editor.
@@ -125,7 +260,7 @@
 - Adds Candidate Profile assignment to the same Job editor.
 - Preserves existing Search Jobs and migrates legacy profile negative terms into the profile blacklist.
 
-## v16.6.0 — Maintenance Cleanup
+## 16.6 — Maintenance Cleanup
 
 ### Changed
 
@@ -133,7 +268,7 @@
 - Fixed an invalid type annotation in profile storage (`params: [Any]` → `params: list[Any]`).
 - Clarified the purpose of the legacy `DEFAULT_KEYWORDS` seed data.
 
-## v16.5.0 — Job-ad Language Detection
+## 16.5 — Job-ad Language Detection
 
 - Detects the dominant language of each job ad as German, English, mixed or unknown.
 - Weights the description more strongly than the title and stores a confidence value.
@@ -141,7 +276,7 @@
 - Supports manual correction and preserves it when a provider refreshes the job.
 - Backfills language metadata for existing jobs during database initialization.
 
-## v16.4.1 — Hybrid CV Intelligence
+## 16.4 — Hybrid CV Intelligence
 
 ### Added
 
@@ -170,7 +305,7 @@
 
 Existing `job_intelligence` tables are migrated in place with additional JSON evidence, breakdown, cache and AI context fields. Existing Candidate CV encryption remains unchanged.
 
-## v16.3.0 — StepStone Experimental Source
+## 16.3.0 (untagged) — StepStone Experimental Source
 
 ### Added
 
