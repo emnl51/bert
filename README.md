@@ -12,7 +12,9 @@ It supports separate user workspaces, scheduled searches, profile-specific rules
 - Strict employment-format filtering for full-time, part-time, Werkstudent, and Minijob searches
 - Candidate Profiles with encrypted CV text
 - Optional local Ollama context for CV analysis
-- Review and application workflow: `To Apply → Applied → Interview → Rejected / Offer`
+- Application workspace with Kanban/list views, follow-up dates, contacts, activity history, and source conversion
+- Manual vacancy capture with profile-aware Job Fit and Language Fit scoring
+- Explicit Markdown handoff of selected applications to career-ops
 - User-specific learning, notifications, searches, applications, and candidate data
 - Admin-managed registration, account activation, sessions, logs, backups, and updates
 - Responsive desktop, tablet, and mobile interface
@@ -34,6 +36,7 @@ Experimental integrations:
 
 - JobSpy for LinkedIn, Indeed, Google Jobs, and Glassdoor
 - StepStone Germany
+- Kleinanzeigen Jobs
 
 Experimental sources can be affected by rate limits, anti-bot controls, or upstream page changes. Bert does not bypass CAPTCHAs or other access controls.
 
@@ -137,6 +140,20 @@ http://host.docker.internal:11434
 ```
 
 The model must already exist in the configured Ollama installation.
+
+## Application workspace and career-ops handoff
+
+Applications can be managed as a Kanban board or list. Each application stores its stage, application date,
+next action, due date, contact, notes, and an owner-scoped activity timeline. The workspace also shows overdue
+actions, stage totals, and source progression.
+
+Use **Add job** to capture a public vacancy that was found outside Bert's providers. Bert scores the pasted
+vacancy against the selected Search Profile and adds it to **To Apply**. Review the extracted fields before
+saving and do not paste private correspondence or credentials into the public vacancy description.
+
+The **Export for career-ops** action downloads a Markdown handoff containing the vacancy, Bert's match evidence,
+and the current application state. Nothing is sent automatically. Review the file before sharing it with an AI
+CLI or provider; CV tailoring, cover letters, and interview preparation remain explicit career-ops tasks.
 
 ## Updating
 

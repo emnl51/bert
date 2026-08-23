@@ -97,6 +97,9 @@ CREATE TABLE IF NOT EXISTS applications (
     job_key TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'to_apply',
     applied_at TEXT,
+    next_action TEXT NOT NULL DEFAULT '',
+    next_action_at TEXT,
+    contact_name TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -105,7 +108,6 @@ CREATE TABLE IF NOT EXISTS applications (
 );
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_applications_updated ON applications(updated_at DESC);
-
 CREATE TABLE IF NOT EXISTS user_job_state (
     owner_key TEXT NOT NULL,
     user_id INTEGER,
@@ -292,8 +294,34 @@ def _init_db_unlocked() -> None:
             # Existing records have no reliable origin profile. Keep them unassigned
             # instead of guessing from a shared job or later feedback.
             con.execute("ALTER TABLE applications ADD COLUMN profile_id INTEGER")
+        for column, definition in (
+            ("next_action", "TEXT NOT NULL DEFAULT ''"),
+            ("next_action_at", "TEXT"),
+            ("contact_name", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if column not in application_columns:
+                con.execute(f"ALTER TABLE applications ADD COLUMN {column} {definition}")
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_applications_profile ON applications(owner_key, profile_id, updated_at DESC)"
+        )
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_applications_next_action ON applications(owner_key, next_action_at)"
+        )
+        con.executescript(
+            """CREATE TABLE IF NOT EXISTS application_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_key TEXT NOT NULL,
+                user_id INTEGER,
+                job_key TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT,
+                detail TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(job_key) REFERENCES jobs(job_key) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_application_events_job
+                ON application_events(owner_key, job_key, created_at DESC);"""
         )
         # Lightweight in-place migration for databases created by v1/v2.
         job_columns = {row[1] for row in con.execute("PRAGMA table_info(jobs)").fetchall()}
@@ -693,9 +721,15 @@ def set_job_decision(
                    VALUES(?,?,?,?,'to_apply',NULL,'',?,?)""",
                 (owner, user_id, profile_id, job_key, now, now),
             )
+            con.execute(
+                """INSERT INTO application_events(owner_key,user_id,job_key,event_type,from_status,
+                   to_status,detail,created_at) VALUES(?,?,?,'created',NULL,'to_apply',?,?)""",
+                (owner, user_id, job_key, "Added to application tracker", now),
+            )
         elif decision != "apply" and app and app["status"] == "to_apply":
             # If it was only queued and never actually applied, remove it from the tracker.
             con.execute("DELETE FROM applications WHERE owner_key=? AND job_key=?", (owner, job_key))
+            con.execute("DELETE FROM application_events WHERE owner_key=? AND job_key=?", (owner, job_key))
     return {"job_key": job_key, "decision": decision, "decision_at": now}
 
 
@@ -704,6 +738,9 @@ def save_application(
     status: str,
     notes: str | None = None,
     applied_at: str | None = None,
+    next_action: str | None = None,
+    next_action_at: str | None = None,
+    contact_name: str | None = None,
     user_id: int | None = None,
 ) -> dict[str, Any]:
     if status not in VALID_APPLICATION_STATUSES:
@@ -717,21 +754,77 @@ def save_application(
         current = con.execute("SELECT * FROM applications WHERE owner_key=? AND job_key=?", (owner, job_key)).fetchone()
         current_notes = current["notes"] if current else ""
         current_applied_at = current["applied_at"] if current else None
+        current_next_action = current["next_action"] if current else ""
+        current_next_action_at = current["next_action_at"] if current else None
+        current_contact_name = current["contact_name"] if current else ""
         final_notes = current_notes if notes is None else notes
         final_applied_at = current_applied_at if applied_at is None else (applied_at or None)
+        final_next_action = current_next_action if next_action is None else next_action
+        final_next_action_at = current_next_action_at if next_action_at is None else (next_action_at or None)
+        final_contact_name = current_contact_name if contact_name is None else contact_name
         if status != "to_apply" and not final_applied_at:
             # First movement beyond To Apply is treated as the application date.
             final_applied_at = now
         if current:
             con.execute(
-                "UPDATE applications SET status=?, applied_at=?, notes=?, updated_at=? WHERE owner_key=? AND job_key=?",
-                (status, final_applied_at, final_notes, now, owner, job_key),
+                """UPDATE applications SET status=?, applied_at=?, next_action=?, next_action_at=?,
+                   contact_name=?, notes=?, updated_at=? WHERE owner_key=? AND job_key=?""",
+                (
+                    status,
+                    final_applied_at,
+                    final_next_action,
+                    final_next_action_at,
+                    final_contact_name,
+                    final_notes,
+                    now,
+                    owner,
+                    job_key,
+                ),
             )
         else:
             con.execute(
-                """INSERT INTO applications(owner_key,user_id,job_key,status,applied_at,notes,created_at,updated_at)
-                   VALUES(?,?,?,?,?,?,?,?)""",
-                (owner, user_id, job_key, status, final_applied_at, final_notes, now, now),
+                """INSERT INTO applications(owner_key,user_id,job_key,status,applied_at,next_action,
+                   next_action_at,contact_name,notes,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    owner,
+                    user_id,
+                    job_key,
+                    status,
+                    final_applied_at,
+                    final_next_action,
+                    final_next_action_at,
+                    final_contact_name,
+                    final_notes,
+                    now,
+                    now,
+                ),
+            )
+        status_changed = not current or current["status"] != status
+        changed_details = []
+        if not status_changed:
+            if current_next_action != final_next_action or current_next_action_at != final_next_action_at:
+                changed_details.append("Next action updated")
+            if current_contact_name != final_contact_name:
+                changed_details.append("Contact updated")
+            if current_notes != final_notes:
+                changed_details.append("Notes updated")
+            if current_applied_at != final_applied_at:
+                changed_details.append("Application date updated")
+        if status_changed or changed_details:
+            con.execute(
+                """INSERT INTO application_events(owner_key,user_id,job_key,event_type,from_status,
+                   to_status,detail,created_at) VALUES(?,?,?,?,?,?,?,?)""",
+                (
+                    owner,
+                    user_id,
+                    job_key,
+                    "status" if status_changed else "updated",
+                    current["status"] if current else None,
+                    status,
+                    f"Moved to {status.replace('_', ' ')}" if status_changed else "; ".join(changed_details),
+                    now,
+                ),
             )
         con.execute(
             """INSERT INTO user_job_state(owner_key,user_id,job_key,decision,decision_at) VALUES(?,?,?,'apply',?)
@@ -744,6 +837,9 @@ def save_application(
         "job_key": job_key,
         "status": status,
         "applied_at": final_applied_at,
+        "next_action": final_next_action,
+        "next_action_at": final_next_action_at,
+        "contact_name": final_contact_name,
         "notes": final_notes,
         "updated_at": now,
     }
@@ -766,7 +862,8 @@ def list_applications(
     params.append(limit)
     with connection() as con:
         rows = con.execute(
-            f"""SELECT a.job_key, a.status, a.applied_at, a.notes, a.created_at, a.updated_at,
+            f"""SELECT a.job_key, a.status, a.applied_at, a.next_action, a.next_action_at,
+                       a.contact_name, a.notes, a.created_at, a.updated_at,
                        j.title, j.company, j.location, j.url, j.source, j.score,
                        a.profile_id,
                        COALESCE(s.decision,'unreviewed') AS decision
@@ -780,6 +877,112 @@ def list_applications(
             params,
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def list_application_events(job_key: str, user_id: int | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    owner = _owner_key(user_id)
+    with connection() as con:
+        exists = con.execute("SELECT 1 FROM applications WHERE owner_key=? AND job_key=?", (owner, job_key)).fetchone()
+        if not exists:
+            raise ValueError("Application not found")
+        rows = con.execute(
+            """SELECT event_type,from_status,to_status,detail,created_at
+               FROM application_events WHERE owner_key=? AND job_key=?
+               ORDER BY created_at DESC,id DESC LIMIT ?""",
+            (owner, job_key, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_application_context(job_key: str, user_id: int | None = None) -> dict[str, Any] | None:
+    """Return an owner-scoped application and full public job text for explicit export."""
+    owner = _owner_key(user_id)
+    with connection() as con:
+        row = con.execute(
+            """SELECT a.job_key,a.status,a.applied_at,a.next_action,a.next_action_at,
+                      a.contact_name,a.notes,a.profile_id,a.created_at,a.updated_at,
+                      j.source,j.title,j.company,j.location,j.url,j.description,j.created_at AS published_at,
+                      j.remote,j.score,j.reasons_json,j.content_language,
+                      COALESCE(ps.language_score,jl.language_score,55) AS language_score,
+                      COALESCE(ps.overall_score,jl.overall_score,j.score) AS overall_score,
+                      COALESCE(ps.language_label,jl.language_label,'unclear') AS language_label
+               FROM applications a JOIN jobs j ON j.job_key=a.job_key
+               LEFT JOIN job_language jl ON jl.job_key=j.job_key
+               LEFT JOIN job_profile_scores ps ON ps.job_key=j.job_key AND ps.profile_id=a.profile_id
+               WHERE a.owner_key=? AND a.job_key=?""",
+            (owner, job_key),
+        ).fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    result["reasons"] = json.loads(result.pop("reasons_json") or "[]")
+    result["remote"] = bool(result["remote"])
+    return result
+
+
+def application_funnel(user_id: int | None = None, profile_id: int | None = None) -> dict[str, Any]:
+    owner = _owner_key(user_id)
+    filters = ["a.owner_key=?"]
+    params: list[Any] = [owner]
+    if profile_id is not None:
+        filters.append("a.profile_id=?")
+        params.append(profile_id)
+    where = " AND ".join(filters)
+    with connection() as con:
+        stages = con.execute(
+            f"SELECT status,COUNT(*) AS count FROM applications a WHERE {where} GROUP BY status", params
+        ).fetchall()
+        reached = con.execute(
+            f"""SELECT COUNT(*) AS tracked,
+                SUM(CASE WHEN a.status!='to_apply' OR EXISTS(
+                    SELECT 1 FROM application_events e WHERE e.owner_key=a.owner_key
+                    AND e.job_key=a.job_key AND e.to_status IN ('applied','interview','offer','rejected')
+                ) THEN 1 ELSE 0 END) AS applied,
+                SUM(CASE WHEN a.status IN ('interview','offer') OR EXISTS(
+                    SELECT 1 FROM application_events e WHERE e.owner_key=a.owner_key
+                    AND e.job_key=a.job_key AND e.to_status IN ('interview','offer')
+                ) THEN 1 ELSE 0 END) AS interview,
+                SUM(CASE WHEN a.status='offer' OR EXISTS(
+                    SELECT 1 FROM application_events e WHERE e.owner_key=a.owner_key
+                    AND e.job_key=a.job_key AND e.to_status='offer'
+                ) THEN 1 ELSE 0 END) AS offer
+                FROM applications a WHERE {where}""",
+            params,
+        ).fetchone()
+        due = con.execute(
+            f"""SELECT COUNT(*) FROM applications a WHERE {where}
+                AND a.next_action_at IS NOT NULL AND a.next_action_at!=''
+                AND date(a.next_action_at)<=date('now') AND a.status NOT IN ('rejected','offer')""",
+            params,
+        ).fetchone()[0]
+        sources = con.execute(
+            f"""SELECT j.source,COUNT(*) AS tracked,
+                SUM(CASE WHEN a.status IN ('interview','offer') OR EXISTS(
+                    SELECT 1 FROM application_events e WHERE e.owner_key=a.owner_key
+                    AND e.job_key=a.job_key AND e.to_status IN ('interview','offer')
+                ) THEN 1 ELSE 0 END) AS progressed,
+                SUM(CASE WHEN a.status='offer' OR EXISTS(
+                    SELECT 1 FROM application_events e WHERE e.owner_key=a.owner_key
+                    AND e.job_key=a.job_key AND e.to_status='offer'
+                ) THEN 1 ELSE 0 END) AS offers
+                FROM applications a JOIN jobs j ON j.job_key=a.job_key
+                WHERE {where} GROUP BY j.source ORDER BY tracked DESC,j.source""",
+            params,
+        ).fetchall()
+    counts = {status: 0 for status in VALID_APPLICATION_STATUSES}
+    counts.update({row["status"]: row["count"] for row in stages})
+    return {
+        "stages": counts,
+        "funnel": {
+            "tracked": int(reached["tracked"] or 0),
+            "applied": int(reached["applied"] or 0),
+            "interview": int(reached["interview"] or 0),
+            "offer": int(reached["offer"] or 0),
+        },
+        "total": sum(counts.values()),
+        "due_actions": due,
+        "sources": [dict(row) for row in sources],
+    }
 
 
 def application_stats(user_id: int | None = None, profile_id: int | None = None) -> dict[str, int]:
