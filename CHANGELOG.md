@@ -17,6 +17,16 @@
 - Replaces expandable sidebar groups with a flatter, quieter navigation structure that exposes destinations directly.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 19.1.1
+
+### What's Changed
+* Move interface preferences into settings by @emnl51 in https://github.com/emnl51/bert/pull/72
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/19.1.0...19.1.1
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/19.1.1)
+
 ## 19.0.0 — Application Workspace
 
 ### Added
