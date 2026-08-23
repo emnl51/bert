@@ -157,9 +157,13 @@ CLI or provider; CV tailoring, cover letters, and interview preparation remain e
 
 ## Interface and themes
 
-The workspace uses a responsive, minimalist layout with keyboard-visible focus states and touch-friendly controls.
-Choose **System**, **Light**, or **Dark** from the sidebar; the preference is stored only in the browser and System
-follows the operating-system color scheme.
+The workspace uses a responsive, minimalist layout with keyboard-visible focus states, touch-friendly controls,
+and high-contrast text and surfaces in both color modes. Open **Settings → Interface** to choose English or Turkish
+and select **System**, **Light**, or **Dark**. Preferences are stored only in the browser; System follows the
+operating-system color scheme.
+
+The sidebar uses always-visible grouped destinations instead of nested accordion menus. Its search field filters
+pages directly, while the compact mode keeps only page icons for narrow workspaces.
 
 Job Review cards show only the role, company, location, Overall Fit, work arrangement, freshness, and review actions.
 Select a card—or focus it and press Enter—to open the complete detail view. The original job site opens only from
