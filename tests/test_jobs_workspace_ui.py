@@ -3,8 +3,10 @@ from pathlib import Path
 
 def test_navigation_uses_five_grouped_main_menus():
     text = Path("app/ui-shell.js").read_text(encoding="utf-8")
-    for label in ("Dashboard", "Jobs", "Intelligence", "Settings", "Administration"):
+    for label in ("Control Panel", "Jobs", "Job Review", "Settings", "Administration"):
         assert f"label:'{label}'" in text
+    assert "tabs:['searchJobs','applications']" in text
+    assert "tabs:['jobReview','intelligence','candidates','learning']" in text
     assert "groupNavigation" in text
     assert "jt-nav-group-panel" in text
     assert "const title=document.createElement('div')" in text
