@@ -14,6 +14,16 @@
 - Refreshes shared colors, spacing, controls, focus states, tables, cards, and responsive layouts with accessible design tokens.
 - Makes the complete job card keyboard-operable while keeping decision actions independent.
 
+## 19.1.0
+
+### What's Changed
+* Modernize workspace UI and automate release changelog by @emnl51 in https://github.com/emnl51/bert/pull/71
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/19.0.0...19.1.0
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/19.1.0)
+
 ## 19.0.0 — Application Workspace
 
 ### Added
