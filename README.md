@@ -162,8 +162,9 @@ and high-contrast text and surfaces in both color modes. Open **Settings → Int
 and select **System**, **Light**, or **Dark**. Preferences are stored only in the browser; System follows the
 operating-system color scheme.
 
-The sidebar uses always-visible grouped destinations instead of nested accordion menus. Its search field filters
-pages directly, while the compact mode keeps only page icons for narrow workspaces.
+The sidebar organizes every destination under five stable workspace sections: **Control Panel**, **Jobs**,
+**Job Review**, **Settings**, and **Administration**. Its search field filters pages directly, while the compact
+mode keeps only page icons for narrow workspaces.
 
 Job Review cards show only the role, company, location, Overall Fit, work arrangement, freshness, and review actions.
 Select a card—or focus it and press Enter—to open the complete detail view. The original job site opens only from
