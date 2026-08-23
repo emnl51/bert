@@ -16,6 +16,13 @@ def test_source_quality_summary(tmp_path, monkeypatch):
                 "language_fit": 35,
                 "recommended": 20,
                 "new_matches": 10,
+                "provider_raw": 130,
+                "provider_duplicates": 30,
+                "filtered_inactive": 2,
+                "filtered_stale": 20,
+                "filtered_arrangement": 3,
+                "filtered_location": 5,
+                "provider_accepted": 70,
             }
         },
     )
@@ -24,3 +31,55 @@ def test_source_quality_summary(tmp_path, monkeypatch):
     assert row["quality_pct"] == 20.0
     assert row["new_yield_pct"] == 10.0
     assert row["dedupe_pct"] == 10.0
+    assert row["provider_raw"] == 130
+    assert row["provider_duplicates"] == 30
+    assert row["filtered_inactive"] == 2
+    assert row["filtered_stale"] == 20
+    assert row["filtered_arrangement"] == 3
+    assert row["filtered_location"] == 5
+    assert row["provider_accepted"] == 70
+
+
+def test_source_analytics_migrates_existing_database(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.settings, "database_path", str(tmp_path / "jobs.db"))
+    db.init_db()
+    with db.connection() as con:
+        con.execute("DROP TABLE IF EXISTS source_run_stats")
+        con.execute(
+            """CREATE TABLE source_run_stats (
+                   run_id INTEGER NOT NULL,
+                   source TEXT NOT NULL,
+                   fetched INTEGER NOT NULL DEFAULT 0,
+                   unique_jobs INTEGER NOT NULL DEFAULT 0,
+                   job_fit INTEGER NOT NULL DEFAULT 0,
+                   language_fit INTEGER NOT NULL DEFAULT 0,
+                   recommended INTEGER NOT NULL DEFAULT 0,
+                   new_matches INTEGER NOT NULL DEFAULT 0,
+                   created_at TEXT NOT NULL,
+                   PRIMARY KEY(run_id, source)
+               )"""
+        )
+
+    ensure_source_analytics_schema()
+
+    with db.connection() as con:
+        columns = {row[1] for row in con.execute("PRAGMA table_info(source_run_stats)").fetchall()}
+    assert {
+        "provider_raw",
+        "provider_duplicates",
+        "filtered_inactive",
+        "filtered_stale",
+        "filtered_arrangement",
+        "filtered_location",
+        "provider_accepted",
+    } <= columns
+
+
+def test_source_analytics_ui_explains_provider_filter_counts():
+    text = open("app/source-analytics-ui.js", encoding="utf-8").read()
+    assert "Provider filters" in text
+    assert "provider_raw" in text
+    assert "filtered_inactive" in text
+    assert "filtered_stale" in text
+    assert "filtered_arrangement" in text
+    assert "filtered_location" in text

@@ -27,6 +27,13 @@ async def run_search() -> dict:
             "language_fit": 0,
             "recommended": 0,
             "new_matches": 0,
+            "provider_raw": 0,
+            "provider_duplicates": 0,
+            "filtered_inactive": 0,
+            "filtered_stale": 0,
+            "filtered_arrangement": 0,
+            "filtered_location": 0,
+            "provider_accepted": 0,
         }
     )
     source_seen: dict[str, set[str]] = defaultdict(set)
@@ -45,6 +52,22 @@ async def run_search() -> dict:
         search_terms = search_terms_for_profile(default_profile) or list(cfg["keywords"].get("search", {}).keys())
         target_location = default_profile.get("target_location") or cfg["target_location"]
         fetched, provider_errors = await fetch_all_jobs(cfg["sources"], search_terms, target_location)
+
+        diagnostic_fields = (
+            "provider_raw",
+            "provider_duplicates",
+            "filtered_inactive",
+            "filtered_stale",
+            "filtered_arrangement",
+            "filtered_location",
+            "provider_accepted",
+        )
+        for source in cfg["sources"]:
+            diagnostics = source.get("_provider_diagnostics") or {}
+            if diagnostics:
+                stats = source_stats[source["name"]]
+                for field in diagnostic_fields:
+                    stats[field] = int(diagnostics.get(field, 0))
 
         for raw_job in fetched:
             source_stats[raw_job.source]["fetched"] += 1

@@ -364,6 +364,17 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
     if not terms:
         raise RuntimeError("Kleinanzeigen requires at least one profile-specific search phrase")
 
+    diagnostics = {
+        "provider_raw": 0,
+        "provider_duplicates": 0,
+        "filtered_inactive": 0,
+        "filtered_stale": 0,
+        "filtered_arrangement": 0,
+        "filtered_location": 0,
+        "provider_accepted": 0,
+    }
+    source["_provider_diagnostics"] = diagnostics
+
     headers = {
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "de-DE,de;q=0.9,en;q=0.7",
@@ -377,10 +388,13 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
                 url = build_kleinanzeigen_search_url(term, location, location_id, radius, page)
                 html = await _response_html(client, url, headers)
                 parsed = parse_kleinanzeigen_search_html(html, source.get("name") or "Kleinanzeigen Jobs")
+                diagnostics["provider_raw"] += len(parsed)
                 for job in parsed:
                     if job.external_id not in seen:
                         seen.add(job.external_id)
                         jobs.append(job)
+                    else:
+                        diagnostics["provider_duplicates"] += 1
                 if not parsed:
                     if page == 1 and not jobs and not _EMPTY_RESULT_RE.search(html):
                         page_kind = "an anti-bot page" if _BLOCK_PAGE_RE.search(html) else "unparseable HTML"
@@ -396,6 +410,7 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
                 html = await _response_html(client, job.url, headers, detail=True)
                 if _INACTIVE_RE.search(html):
                     inactive_ids.add(job.external_id)
+                    diagnostics["filtered_inactive"] += 1
                     continue
                 detail = parse_kleinanzeigen_detail_html(html)
                 if detail["description"]:
@@ -407,11 +422,20 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
                 continue
             if delay:
                 await asyncio.sleep(delay)
-    return [
-        job
-        for job in jobs
-        if job.external_id not in inactive_ids
-        and _within_max_age(job, max_age_days)
-        and _matches_arrangement(job, arrangement)
-        and _matches_location(job, location, location_id, radius)
-    ]
+
+    accepted: list[Job] = []
+    for job in jobs:
+        if job.external_id in inactive_ids:
+            continue
+        if not _within_max_age(job, max_age_days):
+            diagnostics["filtered_stale"] += 1
+            continue
+        if not _matches_arrangement(job, arrangement):
+            diagnostics["filtered_arrangement"] += 1
+            continue
+        if not _matches_location(job, location, location_id, radius):
+            diagnostics["filtered_location"] += 1
+            continue
+        accepted.append(job)
+    diagnostics["provider_accepted"] = len(accepted)
+    return accepted
