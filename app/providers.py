@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import feedparser
 import httpx
 from .models import Job
+from .kleinanzeigen_provider import fetch_kleinanzeigen
 from .source_catalog import render_search_url
 from .stepstone_provider import fetch_stepstone
 
@@ -323,6 +324,7 @@ PROVIDERS = {
     "lever": fetch_lever,
     "smartrecruiters": fetch_smartrecruiters,
     "stepstone": fetch_stepstone,
+    "kleinanzeigen": fetch_kleinanzeigen,
 }
 
 _CIRCUITS: dict[str, tuple[int, float]] = {}
@@ -394,6 +396,15 @@ async def test_source(source: dict, search_terms: list[str], target_location: st
                 "max_search_terms": 1,
                 "pages_per_term": 1,
                 "results_per_term": min(10, int(test_copy["config"].get("results_per_term", 10))),
+            }
+        )
+        search_terms = search_terms[:1]
+    if source["source_type"] == "kleinanzeigen":
+        test_copy["config"].update(
+            {
+                "max_search_terms": 1,
+                "pages_per_term": 1,
+                "detail_limit": min(3, int(test_copy["config"].get("detail_limit", 3))),
             }
         )
         search_terms = search_terms[:1]
