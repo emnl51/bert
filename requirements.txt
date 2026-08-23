@@ -11,3 +11,4 @@ feedparser==6.0.11
 beautifulsoup4==4.13.4
 cryptography==50.0.0
 python-jobspy==1.1.82
+tls-client==1.0.1
