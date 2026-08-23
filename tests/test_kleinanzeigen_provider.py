@@ -111,6 +111,15 @@ def test_kleinanzeigen_fetch_deduplicates_queries_and_enriches_details(monkeypat
     assert len(jobs) == 1
     assert "SPC-Prüfungen" in jobs[0].description
     assert len(calls) == 3
+    assert source["_provider_diagnostics"] == {
+        "provider_raw": 2,
+        "provider_duplicates": 1,
+        "filtered_inactive": 0,
+        "filtered_stale": 0,
+        "filtered_arrangement": 0,
+        "filtered_location": 0,
+        "provider_accepted": 1,
+    }
 
 
 def test_kleinanzeigen_retries_challenge_page_with_browser_compatible_tls(monkeypatch):
@@ -152,6 +161,8 @@ def test_kleinanzeigen_working_arrangement_targets_queries_and_filters_explicit_
     jobs = asyncio.run(fetch_kleinanzeigen(source, ["Qualitätsprüfer"], "Berlin"))
     assert jobs == []
     assert "qualitatsprufer-vollzeit" in calls[0]
+    assert source["_provider_diagnostics"]["filtered_arrangement"] == 1
+    assert source["_provider_diagnostics"]["provider_accepted"] == 0
 
 
 def test_kleinanzeigen_source_ui_supports_both_full_and_part_time():
