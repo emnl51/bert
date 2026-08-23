@@ -385,7 +385,15 @@ def api_sources(_: str = Depends(require_admin)):
 
 @app.post("/api/sources")
 def add_source(payload: SourcePayload, _: str = Depends(require_admin)):
-    if payload.source_type not in {"rss", "search_link", "jooble", "greenhouse", "lever", "smartrecruiters"}:
+    if payload.source_type not in {
+        "rss",
+        "search_link",
+        "jooble",
+        "greenhouse",
+        "lever",
+        "smartrecruiters",
+        "kleinanzeigen",
+    }:
         raise HTTPException(400, "Unsupported source type")
     return {
         "ok": True,

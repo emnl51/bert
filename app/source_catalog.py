@@ -18,6 +18,13 @@ SOURCE_CATALOG = [
         "description": "Experimental direct StepStone search provider. Uses public job-search result pages with conservative request limits, no CAPTCHA/proxy bypass, and fails safely on blocking or layout changes.",
     },
     {
+        "key": "kleinanzeigen",
+        "name": "Kleinanzeigen Jobs — Experimental",
+        "source_type": "kleinanzeigen",
+        "mode": "experimental",
+        "description": "Experimental provider for public Kleinanzeigen job listings. Uses conservative limits, optional detail enrichment, no CAPTCHA/proxy bypass, and fails safely if blocking or layout changes are detected.",
+    },
+    {
         "key": "linkedin",
         "name": "LinkedIn Jobs",
         "source_type": "search_link",
