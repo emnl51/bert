@@ -64,6 +64,23 @@ def test_unknown_format_is_rejected_for_strict_part_time_profile():
     assert any("not confirmed" in r for r in reasons)
 
 
+def test_mixed_full_and_part_time_profile_accepts_both_and_keeps_queries():
+    mixed = {
+        "name": "Quality inspection / Full-time and part-time",
+        "slug": "quality-both",
+        "keywords": {
+            "search": {
+                "Qualitätsprüfer Vollzeit": 0,
+                "Qualitätsprüfer Teilzeit": 0,
+            },
+            "format": {"Vollzeit": 16, "Teilzeit": 16},
+        },
+    }
+    assert search_terms_for_profile(mixed) == ["Qualitätsprüfer Vollzeit", "Qualitätsprüfer Teilzeit"]
+    assert assess_employment_fit(job("Qualitätsprüfer Vollzeit"), mixed)[0] is True
+    assert assess_employment_fit(job("Qualitätsprüfer Teilzeit"), mixed)[0] is True
+
+
 def test_part_time_signal_wins_over_full_time_boilerplate():
     ok, label, _ = assess_employment_fit(
         job("Working Student Operations", "This is a working student role. Our company also has full-time employees."),

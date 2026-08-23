@@ -3,9 +3,11 @@ import hashlib
 import json
 import re
 import unicodedata
+from datetime import date, datetime, timedelta
 from urllib.parse import quote, urljoin
 
 import httpx
+import tls_client
 from bs4 import BeautifulSoup
 
 from .models import Job
@@ -16,6 +18,18 @@ _EMPLOYMENT_RE = re.compile(
     r"(?i)\b(teilzeit|vollzeit|mini[ -]?job|nebenjob|werkstudent\w*|"
     r"part[ -]?time|full[ -]?time|\d{1,2}\s*(?:stunden|std\.?|h)\s*(?:/|pro)\s*woche)\b"
 )
+_PART_TIME_RE = re.compile(r"(?i)\b(teilzeit|part[ -]?time|mini[ -]?job|nebenjob|werkstudent\w*)\b")
+_FULL_TIME_RE = re.compile(r"(?i)\b(vollzeit|full[ -]?time)\b")
+_BLOCK_PAGE_RE = re.compile(
+    r"(?i)(captcha|access denied|verify (?:that )?you are human|unusual traffic|"
+    r"bot detection|akamai|datadome|challenge-platform)"
+)
+_EMPTY_RESULT_RE = re.compile(r"(?i)(keine (?:anzeigen|ergebnisse|treffer)|0\s+ergebnisse)")
+_INACTIVE_RE = re.compile(
+    r"(?i)(anzeige ist nicht mehr verfügbar|anzeige wurde gelöscht|angebot ist nicht mehr verfügbar|"
+    r"ad is no longer available)"
+)
+_ARRANGEMENTS = {"both", "full_time", "part_time"}
 
 
 def _clean(value: str) -> str:
@@ -31,6 +45,86 @@ def _slug(value: str) -> str:
 
 def _stable_id(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:24]
+
+
+def _arrangement(value: str) -> str:
+    value = _clean(value).lower()
+    return value if value in _ARRANGEMENTS else "both"
+
+
+def _query_for_arrangement(query: str, arrangement: str) -> str:
+    query = _clean(query)
+    if arrangement == "part_time" and not _PART_TIME_RE.search(query):
+        return f"{query} Teilzeit"
+    if arrangement == "full_time" and not _FULL_TIME_RE.search(query):
+        return f"{query} Vollzeit"
+    return query
+
+
+def _matches_arrangement(job: Job, arrangement: str) -> bool:
+    if arrangement == "both":
+        return True
+    text = f"{job.title} {job.description}"
+    part_time = bool(_PART_TIME_RE.search(text))
+    full_time = bool(_FULL_TIME_RE.search(text))
+    if arrangement == "part_time":
+        return not (full_time and not part_time)
+    return not (part_time and not full_time)
+
+
+def _listing_date(value: str, today: date | None = None) -> date | None:
+    today = today or datetime.now().date()
+    value = _clean(value)
+    if re.search(r"(?i)\bheute\b", value):
+        return today
+    if re.search(r"(?i)\bgestern\b", value):
+        return today - timedelta(days=1)
+    relative = re.search(r"(?i)vor\s+(\d+)\s+(tag|tagen|woche|wochen)", value)
+    if relative:
+        amount = int(relative.group(1)) * (7 if relative.group(2).lower().startswith("woche") else 1)
+        return today - timedelta(days=amount)
+    explicit = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b", value)
+    if explicit:
+        try:
+            return date(int(explicit.group(3)), int(explicit.group(2)), int(explicit.group(1)))
+        except ValueError:
+            return None
+    return None
+
+
+def _within_max_age(job: Job, max_age_days: int, today: date | None = None) -> bool:
+    if max_age_days <= 0:
+        return True
+    published = _listing_date(job.created_at, today)
+    return published is None or published >= (today or datetime.now().date()) - timedelta(days=max_age_days)
+
+
+def _tls_get(url: str, headers: dict[str, str]) -> tuple[int, str]:
+    """Retry with browser-like TLS when a plain HTTP client receives a challenge page."""
+    session = tls_client.Session(client_identifier="chrome_120", random_tls_extension_order=True)
+    session.headers.update(headers)
+    response = session.get(url, allow_redirects=True, timeout_seconds=30)
+    return int(response.status_code), str(response.text or "")
+
+
+async def _response_html(client: httpx.AsyncClient, url: str, headers: dict[str, str], *, detail: bool = False) -> str:
+    response = await client.get(url)
+    if response.status_code in {403, 429}:
+        status, html = await asyncio.to_thread(_tls_get, url, headers)
+        if status >= 400:
+            raise RuntimeError(f"Kleinanzeigen blocked the request with HTTP {status}")
+        return html
+    response.raise_for_status()
+    html = response.text
+    parser = parse_kleinanzeigen_detail_html if detail else parse_kleinanzeigen_search_html
+    parsed = parser(html)
+    parseable = bool(parsed.get("description")) if detail else bool(parsed)
+    if parseable or (not detail and _EMPTY_RESULT_RE.search(html)):
+        return html
+    status, fallback_html = await asyncio.to_thread(_tls_get, url, headers)
+    if status >= 400:
+        raise RuntimeError(f"Kleinanzeigen browser-compatible retry failed with HTTP {status}")
+    return fallback_html
 
 
 def build_kleinanzeigen_search_url(
@@ -170,10 +264,13 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
     pages = max(1, min(int(config.get("pages_per_term", 1)), 5))
     radius = max(0, min(int(config.get("radius_km", 40)), 200))
     detail_limit = max(0, min(int(config.get("detail_limit", 10)), 50))
+    max_age_days = max(0, min(int(config.get("max_age_days", 30)), 365))
     delay = max(0.0, min(float(config.get("request_delay_seconds", 1.0)), 10.0))
     location = _clean(config.get("location_name") or target_location)
     location_id = str(config.get("location_id") or "").strip()
-    terms = [_clean(term) for term in search_terms if _clean(term)][:max_terms]
+    arrangement = _arrangement(config.get("working_arrangement", "both"))
+    terms = [_query_for_arrangement(_clean(term), arrangement) for term in search_terms if _clean(term)][:max_terms]
+    terms = list(dict.fromkeys(terms))
     if not terms:
         raise RuntimeError("Kleinanzeigen requires at least one profile-specific search phrase")
 
@@ -187,40 +284,42 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
     async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
         for term in terms:
             for page in range(1, pages + 1):
-                response = await client.get(build_kleinanzeigen_search_url(term, location, location_id, radius, page))
-                if response.status_code in {403, 429}:
-                    raise RuntimeError(
-                        f"Kleinanzeigen blocked the request with HTTP {response.status_code}; source left experimental"
-                    )
-                response.raise_for_status()
-                parsed = parse_kleinanzeigen_search_html(response.text, source.get("name") or "Kleinanzeigen Jobs")
+                url = build_kleinanzeigen_search_url(term, location, location_id, radius, page)
+                html = await _response_html(client, url, headers)
+                parsed = parse_kleinanzeigen_search_html(html, source.get("name") or "Kleinanzeigen Jobs")
                 for job in parsed:
                     if job.external_id not in seen:
                         seen.add(job.external_id)
                         jobs.append(job)
                 if not parsed:
-                    if page == 1 and not jobs:
-                        raise RuntimeError(
-                            "Kleinanzeigen returned no parseable job cards; page layout or blocking may have changed"
-                        )
+                    if page == 1 and not jobs and not _EMPTY_RESULT_RE.search(html):
+                        page_kind = "an anti-bot page" if _BLOCK_PAGE_RE.search(html) else "unparseable HTML"
+                        raise RuntimeError(f"Kleinanzeigen returned {page_kind} after a browser-compatible retry")
                     break
                 if delay:
                     await asyncio.sleep(delay)
 
+        inactive_ids: set[str] = set()
         for job in jobs[:detail_limit]:
             try:
-                response = await client.get(job.url)
-                if response.status_code in {403, 429}:
-                    break
-                response.raise_for_status()
-                detail = parse_kleinanzeigen_detail_html(response.text)
+                html = await _response_html(client, job.url, headers, detail=True)
+                if _INACTIVE_RE.search(html):
+                    inactive_ids.add(job.external_id)
+                    continue
+                detail = parse_kleinanzeigen_detail_html(html)
                 if detail["description"]:
                     job.description = detail["description"]
                 job.title = detail["title"] or job.title
                 job.location = detail["location"] or job.location
                 job.created_at = detail["created_at"] or job.created_at
-            except (httpx.HTTPError, ValueError):
+            except (httpx.HTTPError, RuntimeError, ValueError):
                 continue
             if delay:
                 await asyncio.sleep(delay)
-    return jobs
+    return [
+        job
+        for job in jobs
+        if job.external_id not in inactive_ids
+        and _within_max_age(job, max_age_days)
+        and _matches_arrangement(job, arrangement)
+    ]

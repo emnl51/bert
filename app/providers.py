@@ -407,7 +407,9 @@ async def test_source(source: dict, search_terms: list[str], target_location: st
                 "detail_limit": min(3, int(test_copy["config"].get("detail_limit", 3))),
             }
         )
-        search_terms = search_terms[:1]
+        # Test provider connectivity independently from a narrow or malformed
+        # user profile query. Actual search runs still use profile phrases.
+        search_terms = ["Produktion"]
     if source["source_type"] == "search_link":
         query = search_terms[0] if search_terms else "jobs"
         template = source.get("config", {}).get("url_template", "")

@@ -5,6 +5,7 @@ def test_profile_editor_has_guided_examples_and_bilingual_role_families():
     text = Path("app/profile-ui.js").read_text(encoding="utf-8")
     assert 'id="pfProfileGuide"' in text
     assert "technical_parttime" in text
+    assert "quality_both" in text
     assert "engineering_fulltime" in text
     assert "office_minijob" in text
     assert "Qualitätskontrolle" in text

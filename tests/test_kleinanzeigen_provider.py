@@ -1,7 +1,9 @@
 import asyncio
+from datetime import date
 
 import httpx
 
+import app.kleinanzeigen_provider as kleinanzeigen_provider
 from app.kleinanzeigen_provider import (
     build_kleinanzeigen_search_url,
     fetch_kleinanzeigen,
@@ -107,3 +109,69 @@ def test_kleinanzeigen_fetch_deduplicates_queries_and_enriches_details(monkeypat
     assert len(jobs) == 1
     assert "SPC-Prüfungen" in jobs[0].description
     assert len(calls) == 3
+
+
+def test_kleinanzeigen_retries_challenge_page_with_browser_compatible_tls(monkeypatch):
+    challenge = "<html><title>Access denied</title><p>Verify you are human</p></html>"
+    for variable in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
+        monkeypatch.delenv(variable, raising=False)
+
+    async def fake_get(self, url, *args, **kwargs):
+        return httpx.Response(200, text=challenge, request=httpx.Request("GET", str(url)))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    monkeypatch.setattr(kleinanzeigen_provider, "_tls_get", lambda url, headers: (200, SEARCH_HTML))
+    source = {
+        "name": "Kleinanzeigen Jobs",
+        "config": {"detail_limit": 0, "request_delay_seconds": 0},
+    }
+    jobs = asyncio.run(fetch_kleinanzeigen(source, ["Qualitätsprüfer"], "Berlin"))
+    assert len(jobs) == 1
+
+
+def test_kleinanzeigen_working_arrangement_targets_queries_and_filters_explicit_opposite(monkeypatch):
+    calls = []
+    for variable in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
+        monkeypatch.delenv(variable, raising=False)
+
+    async def fake_get(self, url, *args, **kwargs):
+        calls.append(str(url))
+        return httpx.Response(200, text=SEARCH_HTML, request=httpx.Request("GET", str(url)))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    source = {
+        "name": "Kleinanzeigen Jobs",
+        "config": {
+            "working_arrangement": "full_time",
+            "detail_limit": 0,
+            "request_delay_seconds": 0,
+        },
+    }
+    jobs = asyncio.run(fetch_kleinanzeigen(source, ["Qualitätsprüfer"], "Berlin"))
+    assert jobs == []
+    assert "qualitatsprufer-vollzeit" in calls[0]
+
+
+def test_kleinanzeigen_source_ui_supports_both_full_and_part_time():
+    text = open("app/source-ui.js", encoding="utf-8").read()
+    assert "Full-time and part-time" in text
+    assert "working_arrangement" in text
+    assert "Complete descriptions feed language, work-type and card analysis." in text
+    assert "Last 7 days" in text
+    assert "Last 30 days" in text
+
+
+def test_kleinanzeigen_listing_age_supports_relative_and_german_dates():
+    assert kleinanzeigen_provider._listing_date("Heute, 09:00", date(2026, 8, 23)) == date(2026, 8, 23)
+    assert kleinanzeigen_provider._listing_date("Gestern, 10:35", date(2026, 8, 23)) == date(2026, 8, 22)
+    assert kleinanzeigen_provider._listing_date("vor 2 Wochen", date(2026, 8, 23)) == date(2026, 8, 9)
+    assert kleinanzeigen_provider._listing_date("22.08.2026", date(2026, 8, 23)) == date(2026, 8, 22)
+
+
+def test_kleinanzeigen_listing_age_keeps_unknown_dates_but_rejects_known_old_dates():
+    job = parse_kleinanzeigen_search_html(SEARCH_HTML)[0]
+    assert kleinanzeigen_provider._within_max_age(job, 7, date(2026, 8, 23)) is True
+    job.created_at = "01.01.2026"
+    assert kleinanzeigen_provider._within_max_age(job, 30, date(2026, 8, 23)) is False
+    job.created_at = "Auf Anfrage"
+    assert kleinanzeigen_provider._within_max_age(job, 7, date(2026, 8, 23)) is True

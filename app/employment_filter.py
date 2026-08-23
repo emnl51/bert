@@ -85,6 +85,16 @@ def profile_targets_part_time(profile: dict) -> bool:
     return any(term in PART_TIME_SIGNALS for term in format_terms)
 
 
+def profile_targets_full_time(profile: dict) -> bool:
+    slug = _norm(profile.get("slug", ""))
+    name = _norm(profile.get("name", ""))
+    format_terms = _profile_format_terms(profile)
+    identity = f"{slug} {name}"
+    if any(x in identity for x in ("full-time", "full time", "vollzeit")):
+        return True
+    return any(term in FULL_TIME_SIGNALS for term in format_terms)
+
+
 def search_terms_for_profile(profile: dict) -> list[str]:
     """Return profile-specific provider queries without mixing other enabled profiles.
 
@@ -94,7 +104,9 @@ def search_terms_for_profile(profile: dict) -> list[str]:
     """
     keywords = profile.get("keywords") or {}
     configured = [str(term).strip() for term in (keywords.get("search") or {}) if str(term).strip()]
-    if not profile_targets_part_time(profile):
+    # Mixed profiles intentionally accept both arrangements. Their configured
+    # provider phrases must not be rewritten into part-time-only searches.
+    if not profile_targets_part_time(profile) or profile_targets_full_time(profile):
         return list(dict.fromkeys(configured or list((keywords.get("title") or {}).keys())))
 
     title_terms = list((keywords.get("title") or {}).keys())
@@ -157,7 +169,7 @@ def assess_employment_fit(job: Job, profile: dict) -> tuple[bool, str, list[str]
     strict part-time profile, explicit full-time jobs and jobs with no confirmable target
     format are not recommended. Other profiles keep the previous permissive behaviour.
     """
-    if not profile_targets_part_time(profile):
+    if not profile_targets_part_time(profile) or profile_targets_full_time(profile):
         return True, "not_restricted", []
 
     title = _norm(job.title)
