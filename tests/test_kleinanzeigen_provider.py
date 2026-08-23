@@ -2,6 +2,7 @@ import asyncio
 from datetime import date
 
 import httpx
+import pytest
 
 import app.kleinanzeigen_provider as kleinanzeigen_provider
 from app.kleinanzeigen_provider import (
@@ -138,6 +139,31 @@ def test_kleinanzeigen_retries_challenge_page_with_browser_compatible_tls(monkey
     }
     jobs = asyncio.run(fetch_kleinanzeigen(source, ["Qualitätsprüfer"], "Berlin"))
     assert len(jobs) == 1
+
+
+def test_kleinanzeigen_does_not_publish_partial_diagnostics_after_failed_run(monkeypatch):
+    calls = 0
+    for variable in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
+        monkeypatch.delenv(variable, raising=False)
+
+    async def fake_response_html(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return SEARCH_HTML
+        raise RuntimeError("later query failed")
+
+    monkeypatch.setattr(kleinanzeigen_provider, "_response_html", fake_response_html)
+    source = {
+        "name": "Kleinanzeigen Jobs",
+        "_provider_diagnostics": {"provider_raw": 999},
+        "config": {"max_search_terms": 2, "detail_limit": 0, "request_delay_seconds": 0},
+    }
+
+    with pytest.raises(RuntimeError, match="later query failed"):
+        asyncio.run(fetch_kleinanzeigen(source, ["Qualitätsprüfer", "Quality Inspector"], "Berlin"))
+
+    assert "_provider_diagnostics" not in source
 
 
 def test_kleinanzeigen_working_arrangement_targets_queries_and_filters_explicit_opposite(monkeypatch):

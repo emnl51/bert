@@ -349,6 +349,9 @@ def parse_kleinanzeigen_detail_html(html: str) -> dict[str, str]:
 
 
 async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_location: str) -> list[Job]:
+    # Diagnostics are published atomically only after a complete provider run.
+    # Clearing an earlier snapshot also prevents a failed retry from reusing stale data.
+    source.pop("_provider_diagnostics", None)
     config = source.get("config") or {}
     max_terms = max(1, min(int(config.get("max_search_terms", 6)), 20))
     pages = max(1, min(int(config.get("pages_per_term", 1)), 5))
@@ -373,8 +376,6 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
         "filtered_location": 0,
         "provider_accepted": 0,
     }
-    source["_provider_diagnostics"] = diagnostics
-
     headers = {
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "de-DE,de;q=0.9,en;q=0.7",
@@ -438,4 +439,5 @@ async def fetch_kleinanzeigen(source: dict, search_terms: list[str], target_loca
             continue
         accepted.append(job)
     diagnostics["provider_accepted"] = len(accepted)
+    source["_provider_diagnostics"] = diagnostics
     return accepted

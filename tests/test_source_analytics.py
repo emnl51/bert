@@ -1,4 +1,7 @@
+from collections import defaultdict
+
 from app import db
+from app.service import _merge_provider_diagnostics
 from app.source_analytics import ensure_source_analytics_schema, save_source_run_stats, source_quality_summary
 
 
@@ -83,3 +86,25 @@ def test_source_analytics_ui_explains_provider_filter_counts():
     assert "filtered_stale" in text
     assert "filtered_arrangement" in text
     assert "filtered_location" in text
+
+
+def test_provider_diagnostics_accumulate_for_sources_sharing_a_name_and_are_consumed_once():
+    stats = defaultdict(lambda: defaultdict(int))
+    sources = [
+        {
+            "name": "Kleinanzeigen Jobs",
+            "_provider_diagnostics": {"provider_raw": 10, "provider_duplicates": 2, "provider_accepted": 6},
+        },
+        {
+            "name": "Kleinanzeigen Jobs",
+            "_provider_diagnostics": {"provider_raw": 8, "provider_duplicates": 1, "provider_accepted": 5},
+        },
+    ]
+
+    _merge_provider_diagnostics(stats, sources)
+    _merge_provider_diagnostics(stats, sources)
+
+    assert stats["Kleinanzeigen Jobs"]["provider_raw"] == 18
+    assert stats["Kleinanzeigen Jobs"]["provider_duplicates"] == 3
+    assert stats["Kleinanzeigen Jobs"]["provider_accepted"] == 11
+    assert all("_provider_diagnostics" not in source for source in sources)

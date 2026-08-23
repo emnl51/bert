@@ -88,7 +88,13 @@ def test_legacy_jobs_refresh_is_routed_to_review_queue():
 
 
 def test_initial_legacy_jobs_request_survives_review_table_replacement():
+    main = Path("app/v16_main.py").read_text(encoding="utf-8")
     template = Path("app/templates/index.html").read_text(encoding="utf-8")
+    guard = "if(document.body.dataset.jobReviewUi==='true')return"
+    request = "const d=await api(`/api/jobs?limit=100"
+    assert 'data-job-review-ui="true"' in main
+    assert guard in template
+    assert template.index(guard) < template.index(request)
     assert "$('jobsMinScore')?.value" in template
     assert "$('jobsDecision')?.value" in template
     assert "const jobsBody=$('jobsBody');if(!jobsBody)return" in template
