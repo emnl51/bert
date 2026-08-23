@@ -18,6 +18,16 @@
 - Reorganizes sidebar destinations under Control Panel, Jobs, Job Review, Settings, and Administration.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 19.1.2
+
+### What's Changed
+* Reorganize sidebar into five workspace sections by @emnl51 in https://github.com/emnl51/bert/pull/73
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/19.1.1...19.1.2
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/19.1.2)
+
 ## 19.0.0 — Application Workspace
 
 ### Added
