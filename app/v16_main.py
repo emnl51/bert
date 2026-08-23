@@ -277,6 +277,7 @@ def account_page(user: dict = Depends(require_user)):
 def dashboard(request: Request, actor: dict = Depends(require_workspace)):
     is_admin = actor["kind"] == "admin"
     html = Path("app/templates/index.html").read_text(encoding="utf-8").replace("{{ app_name }}", settings.app_name)
+    html = html.replace("<body>", '<body data-job-review-ui="true">', 1)
     html = html.replace(
         "Supply Chain Tracker<small>Berlin / Brandenburg · v3</small>",
         f"{settings.app_name}<small>Smart Job Search · v{VERSION}</small>",

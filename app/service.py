@@ -14,6 +14,28 @@ from .runtime import runtime_config
 from .source_analytics import ensure_source_analytics_schema, save_source_run_stats
 
 
+PROVIDER_DIAGNOSTIC_FIELDS = (
+    "provider_raw",
+    "provider_duplicates",
+    "filtered_inactive",
+    "filtered_stale",
+    "filtered_arrangement",
+    "filtered_location",
+    "provider_accepted",
+)
+
+
+def _merge_provider_diagnostics(source_stats: dict[str, dict[str, int]], sources: list[dict]) -> None:
+    """Consume one-run provider diagnostics and add them to source totals."""
+    for source in sources:
+        diagnostics = source.pop("_provider_diagnostics", None)
+        if not diagnostics:
+            continue
+        stats = source_stats[source["name"]]
+        for field in PROVIDER_DIAGNOSTIC_FIELDS:
+            stats[field] += int(diagnostics.get(field, 0))
+
+
 async def run_search() -> dict:
     run_id = create_run()
     cfg = runtime_config()
@@ -53,21 +75,7 @@ async def run_search() -> dict:
         target_location = default_profile.get("target_location") or cfg["target_location"]
         fetched, provider_errors = await fetch_all_jobs(cfg["sources"], search_terms, target_location)
 
-        diagnostic_fields = (
-            "provider_raw",
-            "provider_duplicates",
-            "filtered_inactive",
-            "filtered_stale",
-            "filtered_arrangement",
-            "filtered_location",
-            "provider_accepted",
-        )
-        for source in cfg["sources"]:
-            diagnostics = source.get("_provider_diagnostics") or {}
-            if diagnostics:
-                stats = source_stats[source["name"]]
-                for field in diagnostic_fields:
-                    stats[field] = int(diagnostics.get(field, 0))
+        _merge_provider_diagnostics(source_stats, cfg["sources"])
 
         for raw_job in fetched:
             source_stats[raw_job.source]["fetched"] += 1
