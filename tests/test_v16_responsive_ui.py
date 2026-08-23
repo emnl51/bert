@@ -25,6 +25,34 @@ def test_v16_shell_has_searchable_grouped_navigation_and_workspace_context():
     assert "Version ${String(SHELL.version" in js
 
 
+def test_workspace_has_persistent_accessible_color_themes():
+    shell = Path("app/ui-shell.js").read_text(encoding="utf-8")
+    template = Path("app/templates/index.html").read_text(encoding="utf-8")
+    login = Path("app/templates/login.html").read_text(encoding="utf-8")
+
+    assert "bert-theme" in shell
+    assert "prefers-color-scheme:dark" in shell
+    assert 'html[data-theme="dark"]' in shell
+    assert 'id="jtThemeSelect"' in shell
+    assert "System theme" in shell and "Light theme" in shell and "Dark theme" in shell
+    assert "focus-visible" in shell
+    assert "jt-skip-link" in shell
+    assert "bert-theme" in template
+    assert 'id="themePicker"' in login
+
+
+def test_job_cards_open_an_accessible_detail_dialog_before_external_listing():
+    review = Path("app/review-ui.js").read_text(encoding="utf-8")
+    main = Path("app/main.py").read_text(encoding="utf-8")
+
+    assert 'role="dialog"' in review
+    assert 'aria-modal="true"' in review
+    assert "openJobDetail" in review
+    assert "Open original listing" in review
+    assert 'tabindex="0"' in review
+    assert '@app.get("/api/jobs/{job_key:path}/detail")' in main
+
+
 def test_v16_main_loads_shell_last():
     text = Path("app/v16_main.py").read_text(encoding="utf-8")
     shell = Path("app/ui-shell.js").read_text(encoding="utf-8")

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ app_name }}</title>
+<script>try{const p=localStorage.getItem('bert-theme')||'system',d=p==='dark'||(p==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);document.documentElement.dataset.theme=d?'dark':'light';document.documentElement.style.colorScheme=d?'dark':'light'}catch(_){}</script>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#697386;--line:#e4e8ef;--accent:#2457d6;--accent2:#eaf0ff;--good:#16794b;--goodbg:#eaf8f0;--bad:#b42318;--badbg:#fff0ef;--warn:#9a6700;--warnbg:#fff8e6;--shadow:0 2px 10px rgba(17,24,39,.06)}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}

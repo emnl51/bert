@@ -1,0 +1,55 @@
+name: Sync release changelog
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  changelog:
+    name: Create changelog pull request
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Add release to changelog
+        run: python scripts/sync_release_changelog.py "$GITHUB_EVENT_PATH"
+
+      - name: Create or update pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md already contains ${RELEASE_TAG}."
+            exit 0
+          fi
+
+          branch="automation/changelog-${RELEASE_TAG//\//-}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "refs/heads/${branch}:refs/remotes/origin/${branch}" || true
+          git checkout -B "$branch"
+          git add CHANGELOG.md
+          git commit -m "Document release ${RELEASE_TAG}"
+          git push --force-with-lease origin "HEAD:refs/heads/${branch}"
+
+          if gh pr view "$branch" --json number >/dev/null 2>&1; then
+            gh pr edit "$branch" \
+              --title "Document release ${RELEASE_TAG}" \
+              --body "Automatically generated from the published GitHub Release notes for ${RELEASE_TAG}."
+          else
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "Document release ${RELEASE_TAG}" \
+              --body "Automatically generated from the published GitHub Release notes for ${RELEASE_TAG}."
+          fi

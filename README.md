@@ -155,6 +155,16 @@ The **Export for career-ops** action downloads a Markdown handoff containing the
 and the current application state. Nothing is sent automatically. Review the file before sharing it with an AI
 CLI or provider; CV tailoring, cover letters, and interview preparation remain explicit career-ops tasks.
 
+## Interface and themes
+
+The workspace uses a responsive, minimalist layout with keyboard-visible focus states and touch-friendly controls.
+Choose **System**, **Light**, or **Dark** from the sidebar; the preference is stored only in the browser and System
+follows the operating-system color scheme.
+
+Job Review cards show only the role, company, location, Overall Fit, work arrangement, freshness, and review actions.
+Select a card—or focus it and press Enter—to open the complete detail view. The original job site opens only from
+that view, so scanning the queue does not unexpectedly leave Bert.
+
 ## Updating
 
 Preserve the existing `.env`, Docker volume, and especially `APP_SECRET_KEY`.
@@ -194,6 +204,14 @@ The optional web updater performs guarded fast-forward updates through a restric
 ## Development
 
 Bert uses Python 3.12. The stable ASGI entry point is `app.application:app`.
+
+Every pull request must review and update this README so user-visible behavior, setup steps, and operational
+guidance stay aligned with the code. Release-impacting changes must also be recorded under **Unreleased** in
+`CHANGELOG.md`.
+
+When a GitHub Release is published, the **Sync release changelog** workflow converts its release notes into an
+exact-tag section in `CHANGELOG.md` and opens an automated pull request. The operation is idempotent, so rerunning
+the workflow will not create duplicate release entries.
 
 Run the test suite:
 

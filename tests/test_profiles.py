@@ -1,6 +1,12 @@
 from app import db
 from app.models import Job
-from app.profile_store import ensure_profile_schema, list_profiles, upsert_profile_score, list_jobs_for_profile
+from app.profile_store import (
+    ensure_profile_schema,
+    get_job_for_profile,
+    list_jobs_for_profile,
+    list_profiles,
+    upsert_profile_score,
+)
 from app.feedback_store import ensure_feedback_schema, record_feedback, apply_learned_penalty
 from app.positive_learning import record_positive_event, apply_positive_boost
 
@@ -73,6 +79,20 @@ def test_job_ad_language_can_be_filtered_independently(tmp_path, monkeypatch):
 
     assert list_jobs_for_profile(profile["id"], decision="all", language="all", content_language="en")
     assert not list_jobs_for_profile(profile["id"], decision="all", language="all", content_language="de")
+
+
+def test_complete_job_detail_is_limited_to_scored_profile(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    job = add_job()
+    profiles = list_profiles()
+    upsert_profile_score(job, profiles[0]["id"])
+
+    detail = get_job_for_profile(job.key, profiles[0]["id"])
+
+    assert detail is not None
+    assert detail["description"] == job.description
+    assert detail["overall_score"] == 77
+    assert get_job_for_profile(job.key, profiles[1]["id"]) is None
 
 
 def test_learning_is_isolated_by_profile(tmp_path, monkeypatch):

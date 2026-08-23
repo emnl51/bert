@@ -51,6 +51,7 @@ from .notifier import test_email, test_telegram
 from .profile_store import (
     delete_profile,
     ensure_profile_schema,
+    get_job_for_profile,
     get_profile,
     list_jobs_for_profile,
     list_profiles,
@@ -516,6 +517,18 @@ def api_jobs(
             user_id=actor["user_id"],
         ),
     }
+
+
+@app.get("/api/jobs/{job_key:path}/detail")
+def api_job_detail(
+    job_key: str,
+    profile_id: int = Query(..., ge=1),
+    actor: dict = Depends(require_workspace),
+):
+    job = get_job_for_profile(job_key, profile_id, user_id=actor["user_id"])
+    if not job:
+        raise HTTPException(404, "Job not found for this profile")
+    return {"job": job, "profile": get_profile(profile_id, user_id=actor["user_id"])}
 
 
 @app.put("/api/jobs/{job_key:path}/decision")
