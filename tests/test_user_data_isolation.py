@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app.candidate_store import get_candidate, list_candidates, save_candidate
+from app.language_store import ensure_language_schema
 from app.models import Job
 from app.profile_store import get_profile, list_profiles, save_profile
 from app.search_job_store import get_search_job, list_search_jobs, save_search_job
@@ -119,3 +120,61 @@ def test_api_rejects_cross_user_resource_ids(tmp_path, monkeypatch):
     assert client.get("/api/settings").status_code == 200
     assert client.get("/api/admin/users").status_code == 401
     assert client.get("/api/database/status").status_code == 401
+
+
+def test_manual_job_workspace_and_export_remain_owner_scoped(tmp_path, monkeypatch):
+    one, two = setup_tenants(tmp_path, monkeypatch)
+    ensure_language_schema()
+    profile_id = save_profile(
+        {
+            "name": "Quality Berlin",
+            "slug": "quality-berlin",
+            "is_default": True,
+            "location_terms": ["Berlin"],
+            "keywords": {"title": {"quality engineer": 30}, "skill": {"8d": 12}},
+        },
+        user_id=one,
+    )
+    client = TestClient(app)
+    client.cookies.set("bert_session", create_user_session(one))
+
+    created = client.post(
+        "/api/jobs/manual",
+        json={
+            "title": "Quality Engineer",
+            "company": "Factory GmbH",
+            "location": "Berlin",
+            "url": "https://example.test/jobs/quality",
+            "description": "Quality Engineer responsible for 8D and control plans. English working environment.",
+            "published_at": "2026-08-23",
+            "remote": False,
+            "profile_id": profile_id,
+        },
+    )
+
+    assert created.status_code == 200
+    job_key = created.json()["job_key"]
+    applications = client.get("/api/applications").json()["applications"]
+    assert [item["job_key"] for item in applications] == [job_key]
+    updated = client.put(
+        f"/api/applications/{job_key}",
+        json={
+            "status": "applied",
+            "next_action": "Follow up",
+            "next_action_at": "2026-08-30",
+            "contact_name": "Erika Recruiter",
+            "notes": "Submitted through portal",
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["next_action"] == "Follow up"
+    assert len(client.get(f"/api/applications/{job_key}/events").json()["events"]) == 2
+    export = client.get(f"/api/applications/{job_key}/career-ops")
+    assert export.status_code == 200
+    assert "Quality Engineer" in export.text
+    assert "attachment" in export.headers["content-disposition"]
+
+    other = TestClient(app)
+    other.cookies.set("bert_session", create_user_session(two))
+    assert other.get(f"/api/applications/{job_key}/events").status_code == 404
+    assert other.get(f"/api/applications/{job_key}/career-ops").status_code == 404

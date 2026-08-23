@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import asyncio
+import hashlib
 from typing import Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -11,15 +12,19 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 
 from .config import settings, validate_secure_settings
+from .career_ops_export import build_career_ops_markdown
 from .db import (
     application_stats,
+    application_funnel,
     dashboard_stats,
     delete_keyword,
     delete_source,
     get_all_settings,
+    get_application_context,
     get_source,
     init_db,
     list_applications,
+    list_application_events,
     list_keywords,
     list_runs,
     list_sources,
@@ -29,6 +34,7 @@ from .db import (
     set_job_decision,
     set_job_content_language,
     set_setting,
+    upsert_job,
 )
 from .feedback_store import (
     delete_rule,
@@ -39,7 +45,8 @@ from .feedback_store import (
     record_feedback,
     set_rule_enabled,
 )
-from .language_store import ensure_language_schema, enrich_applications
+from .language_store import ensure_language_schema, enrich_applications, upsert_language_fit
+from .models import Job
 from .notifier import test_email, test_telegram
 from .profile_store import (
     delete_profile,
@@ -48,7 +55,9 @@ from .profile_store import (
     list_jobs_for_profile,
     list_profiles,
     save_profile,
+    upsert_profile_score,
 )
+from .ranker import assess_language_fit, calculate_overall_score, profile_english_level, score_job
 from .providers import test_source
 from .runtime import runtime_config
 from .source_catalog import SOURCE_CATALOG
@@ -183,6 +192,20 @@ class ApplicationPayload(BaseModel):
     status: str
     notes: str | None = Field(default=None, max_length=4000)
     applied_at: str | None = None
+    next_action: str | None = Field(default=None, max_length=300)
+    next_action_at: str | None = None
+    contact_name: str | None = Field(default=None, max_length=200)
+
+
+class ManualJobPayload(BaseModel):
+    title: str = Field(min_length=2, max_length=300)
+    company: str = Field(default="", max_length=300)
+    location: str = Field(default="", max_length=300)
+    url: str = Field(min_length=8, max_length=2000)
+    description: str = Field(default="", max_length=50_000)
+    published_at: str = Field(default="", max_length=80)
+    remote: bool = False
+    profile_id: int
 
 
 class FeedbackPayload(BaseModel):
@@ -585,6 +608,72 @@ def api_applications(
     }
 
 
+@app.get("/api/application-analytics")
+def api_application_analytics(profile_id: int | None = Query(None), actor: dict = Depends(require_workspace)):
+    if profile_id is not None and not get_profile(profile_id, user_id=actor["user_id"]):
+        raise HTTPException(404, "Profile not found")
+    return application_funnel(user_id=actor["user_id"], profile_id=profile_id)
+
+
+@app.get("/api/applications/{job_key:path}/events")
+def api_application_events(job_key: str, actor: dict = Depends(require_workspace)):
+    try:
+        return {"events": list_application_events(job_key, user_id=actor["user_id"])}
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/applications/{job_key:path}/career-ops")
+def export_application_to_career_ops(job_key: str, actor: dict = Depends(require_workspace)):
+    application = get_application_context(job_key, user_id=actor["user_id"])
+    if not application:
+        raise HTTPException(404, "Application not found")
+    return Response(
+        build_career_ops_markdown(application),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="career-ops-job.md"'},
+    )
+
+
+@app.post("/api/jobs/manual")
+def create_manual_job(payload: ManualJobPayload, actor: dict = Depends(require_workspace)):
+    profile = get_profile(payload.profile_id, user_id=actor["user_id"])
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    url = payload.url.strip()
+    if not url.startswith(("https://", "http://")):
+        raise HTTPException(400, "Job URL must start with http:// or https://")
+    owner = "admin" if actor["user_id"] is None else f"user:{actor['user_id']}"
+    fingerprint = hashlib.sha256(f"{owner}\n{url}".encode()).hexdigest()[:24]
+    job = Job(
+        source="Manual",
+        external_id=fingerprint,
+        title=payload.title.strip(),
+        company=payload.company.strip(),
+        location=payload.location.strip(),
+        url=url,
+        description=payload.description.strip(),
+        created_at=payload.published_at.strip(),
+        remote=payload.remote,
+    )
+    keywords = profile.get("keywords") or {}
+    job.score, job.reasons = score_job(job, keywords, profile.get("location_terms") or [])
+    language_profile = {
+        "primary_working_language": "English",
+        "current_english_level": profile_english_level(profile),
+        "current_german_level": profile.get("current_german_level", "a2_b1"),
+        "max_german_requirement": profile.get("max_german_requirement", "b1"),
+        "prefer_german_growth": profile.get("prefer_german_growth", True),
+    }
+    job.language_score, job.language_label, job.language_reasons = assess_language_fit(job, language_profile)
+    job.overall_score = calculate_overall_score(job.score, job.language_score, profile.get("language_weight", 35))
+    created = upsert_job(job)
+    upsert_language_fit(job)
+    upsert_profile_score(job, profile["id"])
+    set_job_decision(job.key, "apply", user_id=actor["user_id"], profile_id=profile["id"])
+    return {"ok": True, "created": created, "job_key": job.key}
+
+
 @app.put("/api/applications/{job_key:path}")
 def update_application(job_key: str, payload: ApplicationPayload, actor: dict = Depends(require_workspace)):
     try:
@@ -595,6 +684,9 @@ def update_application(job_key: str, payload: ApplicationPayload, actor: dict = 
                 payload.status,
                 notes=payload.notes,
                 applied_at=payload.applied_at,
+                next_action=payload.next_action,
+                next_action_at=payload.next_action_at,
+                contact_name=payload.contact_name,
                 user_id=actor["user_id"],
             ),
         }

@@ -39,6 +39,7 @@ RESET_SCOPES = {
             "job_profile_scores",
             "job_language",
             "search_job_seen",
+            "application_events",
             "applications",
             "user_job_state",
             "jobs",
@@ -371,6 +372,7 @@ def _expected_empty_tables(scope: str) -> set[str]:
         return {
             "jobs",
             "applications",
+            "application_events",
             "job_intelligence",
             "job_feedback",
             "positive_events",

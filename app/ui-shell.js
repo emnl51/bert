@@ -87,7 +87,17 @@
     'Manage automated searches, schedules and connected profiles.':'Otomatik aramaları, zamanlamaları ve bağlı profilleri yönetin.',
     'Review opportunities and train matching for each search profile.':'Fırsatları inceleyin ve her profil için eşleştirmeyi geliştirin.',
     'Follow every application from first interest to final decision.':'Her başvuruyu ilk ilgiden nihai karara kadar takip edin.',
-    'Define the roles, locations and working arrangements you want.':'İstediğiniz rolleri, konumları ve çalışma biçimlerini belirleyin.'
+    'Define the roles, locations and working arrangements you want.':'İstediğiniz rolleri, konumları ve çalışma biçimlerini belirleyin.',
+    'Application Workspace':'Başvuru çalışma alanı','Move applications, plan follow-ups and keep every next step visible.':'Başvuruları ilerletin, takipleri planlayın ve sonraki adımları görünür tutun.',
+    'To Apply':'Başvurulacak','Applied':'Başvuruldu','Interview':'Mülakat','Offer':'Teklif','Rejected':'Reddedildi','Due actions':'Bekleyen işlemler',
+    'Stage':'Aşama','All stages':'Tüm aşamalar','Board':'Pano','List':'Liste','Add job':'İlan ekle','No applications':'Başvuru yok',
+    'Application funnel':'Başvuru hunisi','Source progression':'Kaynak ilerlemesi','Tracked':'Takip edilen','Interview+':'Mülakat+','Offers':'Teklifler',
+    'Applied date':'Başvuru tarihi','Next action':'Sonraki işlem','Next action date':'Sonraki işlem tarihi','Contact':'İletişim kişisi','Notes':'Notlar',
+    'Save application':'Başvuruyu kaydet','Export for career-ops':'career-ops için dışa aktar','Open job':'İlanı aç','Activity':'Etkinlik',
+    'Add a job':'İlan ekle','Paste a public vacancy into Bert and review the fields before saving.':'Herkese açık bir ilanı Bert’e yapıştırın ve kaydetmeden önce alanları kontrol edin.',
+    'Position':'Pozisyon','Company':'Şirket','Location':'Konum','Job URL':'İlan bağlantısı','Published date':'Yayın tarihi','Remote position':'Uzaktan çalışma',
+    'Original job description':'Orijinal ilan açıklaması','Public vacancy text only. Do not paste private correspondence or credentials.':'Yalnızca herkese açık ilan metni. Özel yazışma veya kimlik bilgisi eklemeyin.',
+    'Save and track':'Kaydet ve takip et','Cancel':'İptal','Details':'Ayrıntılar','No next action planned':'Sonraki işlem planlanmadı','No application data yet.':'Henüz başvuru verisi yok.'
   };
   let interfaceLanguage='en';try{interfaceLanguage=localStorage.getItem('bert-interface-language')==='tr'?'tr':'en'}catch(_){}
 

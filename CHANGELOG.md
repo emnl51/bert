@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — Application Workspace
+
+### Added
+
+- Adds responsive Kanban and list views for the complete application pipeline.
+- Adds next actions, due dates, contacts, overdue indicators, and an owner-scoped activity timeline.
+- Adds manual public-vacancy capture with Search Profile-specific Job Fit and Language Fit scoring.
+- Adds application-stage and source-progression analytics.
+- Adds an explicit Markdown export for handing a selected vacancy to career-ops without automatic transmission.
+
+### Security
+
+- Keeps application events, analytics, and exports scoped to the authenticated workspace owner.
+- Treats exported vacancy descriptions as untrusted input and tells downstream AI tools not to invent qualifications.
+- Warns users not to paste private correspondence or credentials into manually captured vacancy text.
+
+### Migration
+
+- Adds the application workspace columns, indexes, and event table in place while preserving existing applications.
+
 ## v17.2.2  — Multi-User Workspaces and Matching Quality
 
 ### Added
