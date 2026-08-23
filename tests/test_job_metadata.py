@@ -49,11 +49,28 @@ def test_metadata_falls_back_to_first_seen_without_inventing_work_type():
     assert metadata["data_quality"] < 80
 
 
+def test_metadata_prefers_iso_publication_date_over_first_seen():
+    metadata = classify_job_metadata(
+        {
+            "title": "Mitarbeiter Qualitätskontrolle",
+            "created_at": "2026-07-15T10:30:00Z",
+            "first_seen": "2026-08-23T08:00:00+00:00",
+            "description": "Kontrolle und Dokumentation in der Produktion.",
+        },
+        today=date(2026, 8, 23),
+    )
+
+    assert metadata["published_date"] == "2026-07-15"
+    assert metadata["freshness"] == "older"
+    assert metadata["age_days"] == 39
+
+
 def test_job_review_cards_expose_actionable_categorized_metadata():
     text = open("app/review-ui.js", encoding="utf-8").read()
     for marker in (
         "primary_category",
         "employment_label",
+        "schedule_label",
         "freshness_label",
         "description_preview",
         "data_quality",

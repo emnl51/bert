@@ -13,6 +13,7 @@ def test_review_cards_explain_role_schedule_language_and_strong_matches():
     text = Path("app/review-ui.js").read_text(encoding="utf-8")
     assert "function insightMarkup(job)" in text
     assert "job-insight schedule" in text
+    assert "scheduleDetail" in text
     assert "job-insight language" in text
     assert "job-language-reasons" in text
     assert "Strong profile match" in text

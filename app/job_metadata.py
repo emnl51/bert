@@ -59,6 +59,16 @@ def _published_date(value: str, first_seen: str = "", today: date | None = None)
             return date(int(explicit.group(3)), int(explicit.group(2)), int(explicit.group(1)))
         except ValueError:
             return None
+    if value:
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+        except ValueError:
+            iso_date = re.match(r"^(\d{4}-\d{2}-\d{2})", value)
+            if iso_date:
+                try:
+                    return date.fromisoformat(iso_date.group(1))
+                except ValueError:
+                    return None
     if first_seen:
         try:
             return datetime.fromisoformat(first_seen.replace("Z", "+00:00")).date()

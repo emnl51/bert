@@ -89,7 +89,11 @@ def read_admin_session(token: str | None) -> str | None:
         return None
     try:
         padded = token + "=" * (-len(token) % 4)
-        role, username, expires_at, nonce, signature = base64.urlsafe_b64decode(padded).decode().split("|", 4)
+        decoded = base64.b64decode(padded, altchars=b"-_", validate=True)
+        canonical = base64.urlsafe_b64encode(decoded).decode().rstrip("=")
+        if not secrets.compare_digest(token, canonical):
+            return None
+        role, username, expires_at, nonce, signature = decoded.decode().split("|", 4)
         value = f"{role}|{username}|{expires_at}|{nonce}"
         expired = int(expires_at) < int(time.time())
     except (binascii.Error, ValueError, UnicodeDecodeError):
