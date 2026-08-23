@@ -13,6 +13,9 @@
 - Simplifies Job Review cards to the information needed for scanning and moves dense metadata into the detail view.
 - Refreshes shared colors, spacing, controls, focus states, tables, cards, and responsive layouts with accessible design tokens.
 - Makes the complete job card keyboard-operable while keeping decision actions independent.
+- Moves language and theme preferences from the sidebar footer into a dedicated Settings → Interface page.
+- Replaces expandable sidebar groups with a flatter, quieter navigation structure that exposes destinations directly.
+- Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
 ## 19.0.0 — Application Workspace
 

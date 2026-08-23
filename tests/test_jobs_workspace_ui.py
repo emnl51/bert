@@ -7,7 +7,8 @@ def test_navigation_uses_five_grouped_main_menus():
         assert f"label:'{label}'" in text
     assert "groupNavigation" in text
     assert "jt-nav-group-panel" in text
-    assert "aria-expanded" in text
+    assert "const title=document.createElement('div')" in text
+    assert "jt-nav-chevron" not in text
 
 
 def test_job_workspace_lists_jobs_and_uses_full_page_editor():

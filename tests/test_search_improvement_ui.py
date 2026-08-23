@@ -22,8 +22,9 @@ def test_review_cards_explain_role_schedule_language_and_strong_matches():
 def test_interface_offers_persistent_english_and_turkish_language_selection():
     text = Path("app/ui-shell.js").read_text(encoding="utf-8")
     assert 'id="jtInterfaceLanguage"' in text
-    assert '<option value="en">EN</option>' in text
-    assert '<option value="tr">TR</option>' in text
+    assert '<option value="en">English</option>' in text
+    assert '<option value="tr">Türkçe</option>' in text
+    assert "installInterfaceSettings" in text
     assert "bert-interface-language" in text
     assert "translateInterface" in text
     assert "Sağlayıcı arama ifadeleri" in text
