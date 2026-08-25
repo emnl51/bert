@@ -45,7 +45,7 @@ def test_v16_shell_has_searchable_hierarchical_navigation_and_workspace_context(
     assert "jt-quick-actions" in js
     assert "jt-sidebar-footer" in js
     assert "Version ${String(SHELL.version" in js
-    assert "main=document.querySelector(\'.main\')" in js
+    assert "main=document.querySelector('.main')" in js
     assert "if(!app||!side||!main||!top||!brand)" in js
 
 
@@ -99,8 +99,10 @@ def test_v16_main_loads_shell_last():
     shell = Path("app/ui-shell.js").read_text(encoding="utf-8")
     assert "from .version import VERSION" in text
     assert "app.version = VERSION" in text
-    assert 'f\'<script src="/ui-shell.js?v={VERSION}"></script>\'' in text
-    assert text.index('<script src="/log-ui.js"></script>') < text.index('f\'<script src="/ui-shell.js?v={VERSION}"></script>\'')
+    assert "f'<script src=\"/ui-shell.js?v={VERSION}\"></script>'" in text
+    assert text.index('<script src="/log-ui.js"></script>') < text.index(
+        "f'<script src=\"/ui-shell.js?v={VERSION}\"></script>'"
+    )
     assert '{"appName": settings.app_name, "version": VERSION}' in text
     assert "window.APP_SHELL" in text
     assert "SHELL.appName" in shell
