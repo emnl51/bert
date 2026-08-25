@@ -165,7 +165,7 @@ operating-system color scheme.
 The sidebar uses five stable top-level destinations: **Control Panel**, **Jobs**, **Job Review**, **Settings**,
 and **Administration**. Primary workspaces open directly, related pages live in compact collapsible submenus, and
 the active group expands automatically. Navigation search, keyboard focus, and mobile behavior remain available.
-Compact mode is a true icon rail: labels, submenu arrows, search, and user copy are removed while centered symbols remain.
+Compact mode is a true icon rail: labels, submenu arrows, search, and user copy are removed while centered symbols remain. The shell mounts this navigation only after both the sidebar and main workspace are available.
 
 Job Review cards show only the role, company, location, Overall Fit, work arrangement, freshness, and review actions.
 Select a card—or focus it and press Enter—to open the complete detail view. The original job site opens only from
