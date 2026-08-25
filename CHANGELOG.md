@@ -28,6 +28,16 @@
 - Version-stamps the UI shell asset so browsers load the current sidebar after an update.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 19.2.3
+
+### What's Changed
+* Align Bert workspace UI with Fredy by @emnl51 in https://github.com/emnl51/bert/pull/77
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/19.2.2...19.2.3
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/19.2.3)
+
 ## 19.0.0 — Application Workspace
 
 ### Added
