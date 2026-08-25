@@ -14,6 +14,9 @@
 
 ### Changed
 
+- Aligns the workspace with Fredy’s compact visual system: a 220/60 px sidebar, neutral surfaces, restrained shadows, tighter radii, and denser navigation.
+- Moves Settings and Administration subpages into contextual content tabs while keeping their sidebar entries singular.
+
 - Simplifies Job Review cards to the information needed for scanning and moves dense metadata into the detail view.
 - Refreshes shared colors, spacing, controls, focus states, tables, cards, and responsive layouts with accessible design tokens.
 - Makes the complete job card keyboard-operable while keeping decision actions independent.
