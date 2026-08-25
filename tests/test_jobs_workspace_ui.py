@@ -12,7 +12,8 @@ def test_navigation_uses_five_grouped_main_menus():
     assert "setSectionExpanded" in text
     assert "bert-nav-row" in text
     assert "bert-nav-toggle" in text
-    assert "bert-nav-chevron" in text\n    assert "jt-nav-primary-row" not in text
+    assert "bert-nav-chevron" in text
+    assert "jt-nav-primary-row" not in text
 
 
 def test_job_workspace_lists_jobs_and_uses_full_page_editor():
