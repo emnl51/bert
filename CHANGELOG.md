@@ -25,6 +25,16 @@
 - Version-stamps the UI shell asset so browsers load the current sidebar after an update.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 19.2.2
+
+### What's Changed
+* Fix rebuilt sidebar startup by @emnl51 in https://github.com/emnl51/bert/pull/76
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/19.2.1...19.2.2
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/19.2.2)
+
 ## 19.0.0 — Application Workspace
 
 ### Added
