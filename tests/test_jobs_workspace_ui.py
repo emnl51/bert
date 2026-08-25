@@ -5,14 +5,14 @@ def test_navigation_uses_five_grouped_main_menus():
     text = Path("app/ui-shell.js").read_text(encoding="utf-8")
     for label in ("Control Panel", "Jobs", "Job Review", "Settings", "Administration"):
         assert f"label:'{label}'" in text
-    assert "primary:'overview',tabs:[]" in text
-    assert "primary:'searchJobs',tabs:['applications']" in text
-    assert "primary:'jobReview',tabs:['intelligence','candidates','learning']" in text
-    assert "groupNavigation" in text
-    assert "setGroupExpanded" in text
-    assert "jt-nav-primary-row" in text
-    assert "jt-nav-group-toggle" in text
-    assert "jt-nav-chevron" in text
+    assert "primary:'overview',children:[]" in text
+    assert "primary:'searchJobs',children:['applications']" in text
+    assert "primary:'jobReview',children:['intelligence','candidates','learning']" in text
+    assert "buildNavigation" in text
+    assert "setSectionExpanded" in text
+    assert "bert-nav-row" in text
+    assert "bert-nav-toggle" in text
+    assert "bert-nav-chevron" in text\n    assert "jt-nav-primary-row" not in text
 
 
 def test_job_workspace_lists_jobs_and_uses_full_page_editor():
