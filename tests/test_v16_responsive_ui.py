@@ -29,11 +29,12 @@ def test_v16_shell_has_mobile_navigation_and_table_cards():
     assert "prefers-reduced-motion" in js
 
 
-def test_v16_shell_has_searchable_flat_group_navigation_and_workspace_context():
+def test_v16_shell_has_searchable_hierarchical_navigation_and_workspace_context():
     js = Path("app/ui-shell.js").read_text(encoding="utf-8")
     assert "jtNavigationSearch" in js
     assert 'aria-label="Search navigation"' in js
-    assert "const title=document.createElement('div')" in js
+    assert "setGroupExpanded" in js
+    assert "jt-nav-primary-row" in js
     assert "items.forEach(btn=>panel.appendChild(btn))" in js
     assert "jtBreadcrumb" in js
     assert "jtPageDescription" in js
