@@ -33,9 +33,12 @@ def test_v16_shell_has_searchable_hierarchical_navigation_and_workspace_context(
     js = Path("app/ui-shell.js").read_text(encoding="utf-8")
     assert "jtNavigationSearch" in js
     assert 'aria-label="Search navigation"' in js
-    assert "setGroupExpanded" in js
-    assert "jt-nav-primary-row" in js
-    assert "items.forEach(btn=>panel.appendChild(btn))" in js
+    assert "setSectionExpanded" in js
+    assert "bert-nav-row" in js
+    assert "children.forEach(button=>" in js
+    assert ".app.jt-collapsed .bert-nav-label{display:none}" in js
+    assert ".app.jt-collapsed .bert-nav-submenu{display:none}" in js
+    assert "toLocaleLowerCase(locale)" in js
     assert "jtBreadcrumb" in js
     assert "jtPageDescription" in js
     assert "jtOverviewWelcome" in js
@@ -94,8 +97,8 @@ def test_v16_main_loads_shell_last():
     shell = Path("app/ui-shell.js").read_text(encoding="utf-8")
     assert "from .version import VERSION" in text
     assert "app.version = VERSION" in text
-    assert '<script src="/ui-shell.js"></script>' in text
-    assert text.index('<script src="/log-ui.js"></script>') < text.index('<script src="/ui-shell.js"></script>')
+    assert 'f\'<script src="/ui-shell.js?v={VERSION}"></script>\'' in text
+    assert text.index('<script src="/log-ui.js"></script>') < text.index('f\'<script src="/ui-shell.js?v={VERSION}"></script>\'')
     assert '{"appName": settings.app_name, "version": VERSION}' in text
     assert "window.APP_SHELL" in text
     assert "SHELL.appName" in shell

@@ -311,7 +311,7 @@ def dashboard(request: Request, actor: dict = Depends(require_workspace)):
     )
     scripts = (
         business_scripts + (admin_scripts if is_admin else "") + f"<script>window.APP_SHELL={shell_config};</script>"
-        '<script src="/ui-shell.js"></script>'
+        f'<script src="/ui-shell.js?v={VERSION}"></script>'
     )
     if not is_admin:
         html = html.replace(
@@ -375,7 +375,11 @@ def legacy_compat_ui(_: dict = Depends(require_workspace)):
 
 @app.get("/ui-shell.js")
 def ui_shell(_: dict = Depends(require_workspace)):
-    return Response(Path("app/ui-shell.js").read_text(encoding="utf-8"), media_type="application/javascript")
+    return Response(
+        Path("app/ui-shell.js").read_text(encoding="utf-8"),
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/users-ui.js")

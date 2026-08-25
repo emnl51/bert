@@ -2,20 +2,16 @@
   const $ = id => document.getElementById(id);
   const SHELL = window.APP_SHELL || {};
   const USER_HIDDEN_TABS = new Set(['sources','search','keywords','runs','users','systemEmail','database','logs','updates']);
-  const NAV = {
-    overview:['⌂','Control Panel'], searchJobs:['▤','Jobs'], jobReview:['✓','Job Review'],
-    applications:['→','Applications'], intelligence:['◇','Intelligence'], candidates:['◎','Candidate Profiles'],
-    learning:['+','Learning'], profiles:['◉','Search Profiles'], interface:['◐','Interface'], sources:['◫','Sources'],
-    search:['⌕','Global Search'], keywords:['#','Ranking Rules'], notifications:['↗','Notifications'],
-    runs:['↻','Run History'], users:['◎','Users'], systemEmail:['@','System Email'], database:['DB','Database'], logs:['>_','Logs'], updates:['↑','Updates']
-  };
-  const GROUPS = [
-    {key:'controlPanel',label:'Control Panel',icon:'⌂',primary:'overview',tabs:[]},
-    {key:'jobs',label:'Jobs',icon:'▤',primary:'searchJobs',tabs:['applications']},
-    {key:'jobReview',label:'Job Review',icon:'✓',primary:'jobReview',tabs:['intelligence','candidates','learning']},
-    {key:'settings',label:'Settings',icon:'⚙',primary:null,tabs:['profiles','interface','sources','search','keywords','notifications']},
-    {key:'administration',label:'Administration',icon:'▦',primary:null,tabs:['runs','users','systemEmail','database','logs','updates']},
+  const NAVIGATION = [
+    {key:'controlPanel',label:'Control Panel',icon:'⌂',primary:'overview',children:[]},
+    {key:'jobs',label:'Jobs',icon:'▤',primary:'searchJobs',children:['applications']},
+    {key:'jobReview',label:'Job Review',icon:'✓',primary:'jobReview',children:['intelligence','candidates','learning']},
+    {key:'settings',label:'Settings',icon:'⚙',primary:null,children:['profiles','interface','sources','search','keywords','notifications']},
+    {key:'administration',label:'Administration',icon:'▦',primary:null,children:['runs','users','systemEmail','database','logs','updates']},
   ];
+  const DESTINATIONS = {
+    overview:{icon:'⌂',label:'Control Panel'},searchJobs:{icon:'▤',label:'Jobs'},jobReview:{icon:'✓',label:'Job Review'},applications:{icon:'→',label:'Applications'},intelligence:{icon:'◇',label:'Intelligence'},candidates:{icon:'◎',label:'Candidate Profiles'},learning:{icon:'+',label:'Learning'},profiles:{icon:'◉',label:'Search Profiles'},interface:{icon:'◐',label:'Interface'},sources:{icon:'◫',label:'Sources'},search:{icon:'⌕',label:'Global Search'},keywords:{icon:'#',label:'Ranking Rules'},notifications:{icon:'↗',label:'Notifications'},runs:{icon:'↻',label:'Run History'},users:{icon:'◎',label:'Users'},systemEmail:{icon:'@',label:'System Email'},database:{icon:'DB',label:'Database'},logs:{icon:'>_',label:'Logs'},updates:{icon:'↑',label:'Updates'}
+  };
   const PAGE_CONTEXT = {
     overview:'Your search activity, applications and next steps at a glance.',
     searchJobs:'Manage automated searches, schedules and connected profiles.',
@@ -138,11 +134,12 @@
       body.jt-menu-open{overflow:hidden}.app{grid-template-columns:var(--jt-sidebar) minmax(0,1fr);transition:grid-template-columns .2s ease;min-height:100dvh}.app.jt-collapsed{grid-template-columns:var(--jt-sidebar-mini) minmax(0,1fr)}
       .side{width:auto;min-width:0;height:100dvh;position:sticky;top:0;padding:16px 11px 12px;background:#101827;z-index:40;display:flex;flex-direction:column;overflow:hidden;border-right:1px solid rgba(148,163,184,.1)}
       .brand{padding:4px 9px 17px;font-size:19px;white-space:nowrap;overflow:hidden}.brand small{opacity:.58}.jt-brand-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.jt-collapse{width:34px;height:34px;border:0;background:transparent;color:#94a3b8;border-radius:9px;cursor:pointer;flex:none;font-size:17px}.jt-collapse:hover{background:rgba(255,255,255,.06);color:#fff}
-      .nav{display:flex;flex-direction:column;gap:5px;overflow-y:auto;overflow-x:hidden;padding:0 1px 12px;scrollbar-width:thin}.nav button{display:flex;align-items:center;gap:10px;width:100%;min-height:38px;padding:7px 10px;margin:0;border:0;border-radius:9px;background:transparent;white-space:nowrap;font-size:13px;font-weight:560;transition:background .14s ease,color .14s ease;color:#aeb9ca}.nav button:hover{background:rgba(255,255,255,.065);color:#f8fafc;transform:none}.nav button.active{background:rgba(89,119,214,.2);color:#fff;box-shadow:inset 2px 0 0 #8ca7ff}.jt-nav-icon,.jt-group-icon{width:20px;text-align:center;font-size:13px;flex:none;color:#7f8da3}.nav button.active .jt-nav-icon{color:#b9c8ff}.jt-nav-label,.jt-group-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
-      .jt-nav-group{display:grid;gap:2px}.jt-nav-primary-row{display:flex;align-items:center;gap:2px}.jt-nav-primary-row>button[data-tab]{min-width:0;flex:1;font-weight:680}.jt-nav-group-toggle{font-weight:680!important}.jt-nav-expander{width:30px!important;min-width:30px!important;padding:0!important;justify-content:center!important;color:#77869d!important}.jt-nav-chevron{display:block;font-size:13px;transition:transform .16s ease}.jt-nav-group.is-open .jt-nav-chevron{transform:rotate(90deg)}
-      .jt-nav-group-panel{display:none;gap:1px;margin:1px 0 5px 30px;padding-left:9px;border-left:1px solid rgba(148,163,184,.16)}.jt-nav-group.is-open>.jt-nav-group-panel{display:grid}.jt-nav-group-panel>button{min-height:34px;padding:6px 9px;font-size:12px;font-weight:520;border-radius:8px}.jt-nav-group-panel .jt-nav-icon{width:17px;font-size:11px}
-      .app.jt-collapsed .brand .jt-brand-text,.app.jt-collapsed .brand small,.app.jt-collapsed .jt-nav-label,.app.jt-collapsed .jt-group-label{display:none}.app.jt-collapsed .brand{padding-left:9px}.app.jt-collapsed .jt-brand-row{justify-content:center}.app.jt-collapsed .nav button{justify-content:center;padding-inline:8px}.app.jt-collapsed .jt-nav-icon,.app.jt-collapsed .jt-group-icon{font-size:15px}.app.jt-collapsed .jt-collapse{transform:rotate(180deg)}
-      .app.jt-collapsed .jt-nav-expander,.app.jt-collapsed .jt-nav-group-panel{display:none!important}.app.jt-collapsed .nav{gap:5px}.app.jt-collapsed .jt-nav-group{gap:1px}
+      .nav{display:flex;flex:1;flex-direction:column;gap:6px;overflow-y:auto;overflow-x:hidden;padding:0 1px 12px;scrollbar-width:thin}
+      .bert-nav-section{display:grid;gap:3px}.bert-nav-row{display:grid;grid-template-columns:minmax(0,1fr) 34px;gap:3px}
+      .bert-nav-button,.bert-nav-toggle{display:flex;align-items:center;gap:11px;width:100%;min-height:42px;margin:0;padding:8px 11px;border:0;border-radius:10px;background:transparent;color:#aeb9ca;font-size:13px;font-weight:650;text-align:left;white-space:nowrap;cursor:pointer;transition:background .14s ease,color .14s ease}.bert-nav-button:hover,.bert-nav-toggle:hover{background:rgba(255,255,255,.07);color:#fff;transform:none}.bert-nav-button.active{background:rgba(89,119,214,.2);color:#fff;box-shadow:inset 3px 0 0 #8ca7ff}.bert-nav-section.has-active>.bert-nav-row .bert-nav-button,.bert-nav-section.has-active>.bert-nav-toggle{color:#f8fafc}
+      .bert-nav-icon{display:grid;place-items:center;width:22px;min-width:22px;height:22px;color:#8998ae;font-size:14px;line-height:1}.bert-nav-button.active .bert-nav-icon{color:#c7d3ff}.bert-nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis}.bert-nav-expander{display:grid;place-items:center;width:34px;min-height:42px;padding:0;border:0;border-radius:10px;background:transparent;color:#7f8da3;cursor:pointer}.bert-nav-expander:hover{background:rgba(255,255,255,.07);color:#fff}.bert-nav-chevron{transition:transform .16s ease}.bert-nav-section.is-open .bert-nav-chevron{transform:rotate(90deg)}
+      .bert-nav-submenu{display:none;gap:2px;margin:1px 0 5px 33px;padding:3px 0 3px 10px;border-left:1px solid rgba(148,163,184,.18)}.bert-nav-section.is-open>.bert-nav-submenu{display:grid}.bert-nav-submenu .bert-nav-button{min-height:36px;padding:6px 9px;font-size:12px;font-weight:540}.bert-nav-submenu .bert-nav-icon{width:18px;min-width:18px;height:18px;font-size:11px}
+      .app.jt-collapsed .brand .jt-brand-text,.app.jt-collapsed .brand small,.app.jt-collapsed .bert-nav-label{display:none}.app.jt-collapsed .brand{padding-inline:0}.app.jt-collapsed .jt-brand-row{justify-content:center}.app.jt-collapsed .bert-nav-row{display:block}.app.jt-collapsed .bert-nav-button,.app.jt-collapsed .bert-nav-toggle{justify-content:center;width:48px;height:48px;margin-inline:auto;padding:0}.app.jt-collapsed .bert-nav-icon{width:24px;min-width:24px;height:24px;font-size:17px}.app.jt-collapsed .bert-nav-expander,.app.jt-collapsed .bert-nav-submenu{display:none}.app.jt-collapsed .jt-collapse{transform:rotate(180deg)}
       .main{max-width:none;width:100%;min-width:0;padding:24px clamp(18px,2.5vw,38px) 50px}.top{min-height:62px;position:sticky;top:0;z-index:20;margin:-10px 0 20px;padding:10px 0;background:rgba(248,250,252,.86);backdrop-filter:blur(14px);display:flex;gap:14px}.top h1{font-size:clamp(21px,2vw,27px);letter-spacing:-.035em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top-actions{display:flex;gap:8px;align-items:center}.jt-mobile-menu{display:none;width:42px;height:42px;border:1px solid var(--jt-border);background:white;border-radius:10px;font-size:20px;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 10px rgba(15,23,42,.05)}
       .card{border-radius:var(--jt-radius);border-color:var(--jt-border);box-shadow:0 8px 28px rgba(15,23,42,.045);padding:clamp(14px,1.8vw,20px)}.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}.metric{font-size:clamp(23px,2.2vw,30px)}.section-title{margin:26px 0 11px}.section-title h2{font-size:19px;letter-spacing:-.015em}
       .btn{min-height:38px;border-radius:9px;transition:transform .12s ease,box-shadow .12s ease,background .12s ease}.btn:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(15,23,42,.08)}.btn.primary{background:linear-gradient(135deg,var(--jt-blue),var(--jt-blue-dark))}.btn.small{min-height:31px}.field input,.field select,.field textarea,select,input[type=date]{min-height:40px;border-color:#cbd5e1}.field input:focus,.field select:focus,.field textarea:focus,select:focus,input:focus{outline:3px solid rgba(37,99,235,.11);border-color:#60a5fa}
@@ -152,18 +149,16 @@
       :root{--jt-radius:16px;--jt-bg:#f3f6fb;--jt-blue:#315eea;--jt-blue-dark:#2448c4}
       body{background:#f4f6fb}.side{border-right:1px solid rgba(148,163,184,.08)}
       .brand{padding:3px 9px 18px}.brand .jt-brand-text{font-size:19px;letter-spacing:-.035em}.brand small{margin-top:5px;font-size:10px;letter-spacing:.035em}
-      .jt-sidebar-search{position:relative;margin:0 2px 16px}.jt-sidebar-search input{width:100%;height:40px;border:1px solid rgba(148,163,184,.18);border-radius:11px;background:rgba(255,255,255,.055);padding:0 38px 0 35px;color:#e6edf8;font-size:12px;outline:none}.jt-sidebar-search input::placeholder{color:#8390a7}.jt-sidebar-search input:focus{border-color:rgba(110,152,255,.72);background:rgba(255,255,255,.08);box-shadow:0 0 0 3px rgba(84,125,238,.14)}.jt-search-icon{position:absolute;left:12px;top:10px;color:#91a0b8;font-size:15px;pointer-events:none}.jt-search-shortcut{position:absolute;right:10px;top:10px;color:#8d9ab0;font-size:10px;border:1px solid rgba(148,163,184,.2);border-radius:4px;padding:1px 5px;pointer-events:none}
-      .nav{flex:1;padding-bottom:14px}.nav button[hidden],.jt-nav-group[hidden],.jt-nav-empty[hidden]{display:none!important}.nav button.active{background:rgba(84,123,233,.18);box-shadow:inset 2px 0 0 #85a2ff}.jt-nav-group.has-active>.jt-nav-primary-row>button[data-tab],.jt-nav-group.has-active>.jt-nav-group-toggle{color:#f5f8ff}.jt-nav-empty{padding:15px 10px;color:#9aa7bc;font-size:12px}
-      .jt-sidebar-footer{display:flex;align-items:center;gap:10px;margin-top:auto;padding:13px 8px 3px;border-top:1px solid rgba(148,163,184,.12)}.jt-user-avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:rgba(85,125,235,.15);color:#c1d1ff;font-size:12px;font-weight:750}.jt-user-copy{min-width:0}.jt-user-label{display:block;color:#e7edf7;font-size:12px;font-weight:680}.jt-user-meta{display:block;margin-top:2px;color:#7f8da3;font-size:10px}
-      .app.jt-collapsed .jt-sidebar-search,.app.jt-collapsed .jt-user-copy{display:none}.app.jt-collapsed .jt-sidebar-footer{justify-content:center;padding-inline:0}
+      .bert-nav-search{position:relative;margin:0 2px 16px}.bert-nav-search input{width:100%;height:40px;border:1px solid rgba(148,163,184,.18);border-radius:11px;background:rgba(255,255,255,.055);padding:0 38px 0 35px;color:#e6edf8;font-size:12px;outline:none}.bert-nav-search input::placeholder{color:#8390a7}.bert-nav-search input:focus{border-color:rgba(110,152,255,.72);background:rgba(255,255,255,.08);box-shadow:0 0 0 3px rgba(84,125,238,.14)}.bert-nav-search-icon{position:absolute;left:12px;top:10px;color:#91a0b8;font-size:15px;pointer-events:none}.bert-nav-search-shortcut{position:absolute;right:10px;top:10px;color:#8d9ab0;font-size:10px;border:1px solid rgba(148,163,184,.2);border-radius:4px;padding:1px 5px;pointer-events:none}.bert-nav-button[hidden],.bert-nav-section[hidden],.bert-nav-empty[hidden]{display:none!important}.bert-nav-empty{padding:15px 10px;color:#9aa7bc;font-size:12px}
+      .jt-sidebar-footer{display:flex;align-items:center;gap:10px;margin-top:auto;padding:13px 8px 3px;border-top:1px solid rgba(148,163,184,.12)}.jt-user-avatar{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:rgba(85,125,235,.15);color:#c1d1ff;font-size:12px;font-weight:750}.jt-user-copy{min-width:0}.jt-user-label{display:block;color:#e7edf7;font-size:12px;font-weight:680}.jt-user-meta{display:block;margin-top:2px;color:#7f8da3;font-size:10px}.app.jt-collapsed .bert-nav-search,.app.jt-collapsed .jt-user-copy{display:none}.app.jt-collapsed .jt-sidebar-footer{justify-content:center;padding-inline:0}
       .main{padding:27px clamp(24px,3.3vw,48px) 56px}.top{min-height:78px;margin:-10px 0 24px;padding:13px 0;background:rgba(244,246,251,.88);border-bottom:1px solid rgba(210,218,229,.72)}.jt-page-heading{min-width:0;flex:1}.jt-breadcrumb{margin-bottom:4px;color:#67758c;font-size:11px;font-weight:650;letter-spacing:.025em}.top h1{font-size:clamp(22px,2.1vw,29px)}.jt-page-description{margin-top:4px;color:#738097;font-size:12px}.top-actions .btn{min-height:39px;padding-inline:13px}.top-actions .btn.primary{box-shadow:0 5px 14px rgba(49,94,234,.2)}
       .section.active{animation:jt-section-enter .17s ease-out}@keyframes jt-section-enter{from{opacity:.7;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}.card{border-color:#e1e7f0;box-shadow:0 4px 18px rgba(25,40,70,.045)}.grid{gap:15px}.grid>.card{position:relative;overflow:hidden}.grid>.card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:#d4dcee}.grid>.card:nth-child(4n + 1)::before{background:#5579e8}.grid>.card:nth-child(4n + 2)::before{background:#6a8caa}.grid>.card:nth-child(4n + 3)::before{background:#618f83}.grid>.card:nth-child(4n)::before{background:#907da9}.grid>.card>.muted{font-size:11px;font-weight:680;letter-spacing:.02em}.metric{margin-top:8px;letter-spacing:-.035em}.section-title{margin-top:30px}.table-wrap{border-color:#e1e7f0;box-shadow:0 4px 18px rgba(25,40,70,.04)}.table-wrap th{background:#f8fafd;font-size:10px;letter-spacing:.065em}.table-wrap tbody tr:hover{background:#fafcff}
       .jt-overview-welcome{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:20px;padding:20px 22px;background:linear-gradient(115deg,#fff 0%,#f3f6ff 100%);border:1px solid #e1e7f0;border-radius:16px}.jt-overview-welcome h2{margin:0 0 5px;font-size:18px;letter-spacing:-.025em}.jt-overview-welcome p{margin:0;color:#69778b;font-size:12px}.jt-quick-actions{display:flex;flex-wrap:wrap;gap:8px}.jt-quick-action{min-height:36px;font-size:12px}
       @media(max-width:1280px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.main{padding-inline:22px}}
       @media(max-width:980px){
-        .app,.app.jt-collapsed{display:block}.side{position:fixed;left:0;top:0;bottom:0;width:min(310px,86vw);height:100dvh;transform:translateX(-102%);transition:transform .22s ease;z-index:50;padding-top:18px}.side.jt-open{transform:translateX(0)}.jt-sidebar-overlay.jt-open{display:block}.jt-collapse{display:none}.brand .jt-brand-text,.app.jt-collapsed .brand .jt-brand-text,.brand small,.app.jt-collapsed .brand small,.jt-nav-label,.app.jt-collapsed .jt-nav-label{display:block}.nav button,.app.jt-collapsed .nav button{justify-content:flex-start;padding:10px 12px}.main{padding:14px 18px 42px}.top{top:0;margin:-2px -2px 16px;padding:9px 2px;min-height:58px}.jt-mobile-menu{display:inline-flex}.top-actions .btn{padding-inline:10px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid,.two{grid-template-columns:1fr 1fr}.source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        .app,.app.jt-collapsed{display:block}.side{position:fixed;left:0;top:0;bottom:0;width:min(310px,86vw);height:100dvh;transform:translateX(-102%);transition:transform .22s ease;z-index:50;padding-top:18px}.side.jt-open{transform:translateX(0)}.jt-sidebar-overlay.jt-open{display:block}.jt-collapse{display:none}.brand .jt-brand-text,.app.jt-collapsed .brand .jt-brand-text,.brand small,.app.jt-collapsed .brand small,.bert-nav-label,.app.jt-collapsed .bert-nav-label{display:block}.bert-nav-button,.bert-nav-toggle,.app.jt-collapsed .bert-nav-button,.app.jt-collapsed .bert-nav-toggle{justify-content:flex-start;width:100%;height:auto;margin:0;padding:10px 12px}.app.jt-collapsed .bert-nav-row{display:grid}.app.jt-collapsed .bert-nav-expander{display:grid}.app.jt-collapsed .bert-nav-section.is-open>.bert-nav-submenu{display:grid}.main{padding:14px 18px 42px}.top{top:0;margin:-2px -2px 16px;padding:9px 2px;min-height:58px}.jt-mobile-menu{display:inline-flex}.top-actions .btn{padding-inline:10px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.form-grid,.two{grid-template-columns:1fr 1fr}.source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
       }
-      @media(max-width:980px){.jt-sidebar-search,.app.jt-collapsed .jt-sidebar-search{display:block}.jt-user-copy,.app.jt-collapsed .jt-user-copy{display:block}.jt-page-description{display:none}.main{padding-inline:18px}.top{min-height:66px}.jt-overview-welcome{align-items:flex-start;flex-direction:column}.jt-quick-actions{width:100%}}
+      @media(max-width:980px){.bert-nav-search,.app.jt-collapsed .bert-nav-search{display:block}.jt-user-copy,.app.jt-collapsed .jt-user-copy{display:block}.jt-page-description{display:none}.main{padding-inline:18px}.top{min-height:66px}.jt-overview-welcome{align-items:flex-start;flex-direction:column}.jt-quick-actions{width:100%}}
       @media(max-width:720px){
         .main{padding:10px 12px 34px}.top{gap:8px}.top h1{font-size:21px;flex:1}.top-actions{gap:6px}.top-actions .btn{min-height:40px;font-size:12px;padding:7px 9px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.card{padding:14px;border-radius:12px}.metric{font-size:23px}.form-grid,.two,.source-grid{grid-template-columns:1fr}.inline{display:grid;grid-template-columns:1fr;width:100%;align-items:stretch}.inline .field{width:100%}.inline>button{width:100%}.actions{display:grid;grid-template-columns:1fr}.actions .btn{width:100%}.section-title{align-items:flex-start;flex-direction:column}.section-title>select,.section-title>.inline{width:100%}
         .table-wrap{border:0;background:transparent;overflow:visible}.table-wrap table{display:block;min-width:0;width:100%}.table-wrap thead{display:none}.table-wrap tbody{display:grid;gap:10px;width:100%}.table-wrap tr{display:block;background:#fff;border:1px solid var(--jt-border);border-radius:12px;padding:6px 12px;box-shadow:0 5px 18px rgba(15,23,42,.04)}.table-wrap td{display:grid;grid-template-columns:minmax(92px,36%) minmax(0,1fr);gap:10px;width:100%;padding:8px 0;border-bottom:1px solid #edf0f5;white-space:normal;overflow-wrap:anywhere}.table-wrap td:last-child{border-bottom:0}.table-wrap td::before{content:attr(data-label);font-size:10px;text-transform:uppercase;letter-spacing:.055em;color:#64748b;font-weight:800;padding-top:2px}.table-wrap td[colspan]{display:block;text-align:center}.table-wrap td[colspan]::before{display:none}.decision{min-width:0}.notes-cell{max-width:none}.compact-select{width:100%;min-width:0}.source-toolbar{flex-direction:column;align-items:stretch}.source-toolbar .field{max-width:none!important}.source-toolbar .btn{width:100%}.jt-modal-backdrop{padding:10px}.jt-modal{border-radius:14px;padding:17px;max-height:94dvh}.jt-fields{grid-template-columns:1fr}.jt-fields .full{grid-column:auto}
@@ -182,7 +177,7 @@
       .jt-overview-welcome{background:var(--card);border-color:var(--line)}.jt-overview-welcome p{color:var(--muted)}.grid>.card::before{background:var(--accent)}.warning{background:var(--warnbg);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--line))}
       .jt-interface-settings{max-width:760px}.jt-interface-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.jt-setting-block{display:grid;gap:7px}.jt-setting-block label{font-weight:720}.jt-setting-block select{width:100%;min-height:44px}.jt-theme-preview{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}.jt-theme-swatch{height:54px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft);padding:7px}.jt-theme-swatch::before{content:'';display:block;width:55%;height:7px;border-radius:4px;background:var(--muted);box-shadow:0 13px 0 color-mix(in srgb,var(--muted) 45%,transparent)}.jt-theme-swatch.active{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}.jt-theme-swatch[data-theme-option="dark"]{background:#121925}.jt-theme-swatch[data-theme-option="dark"]::before{background:#d7dfed;box-shadow:0 13px 0 #66758d}.jt-theme-swatch[data-theme-option="system"]{background:linear-gradient(90deg,#f7f8fb 0 50%,#121925 50%)}
       .jt-skip-link{position:fixed;left:14px;top:10px;z-index:200;transform:translateY(-160%);padding:10px 14px;border-radius:9px;background:var(--accent);color:#fff;font-weight:700}.jt-skip-link:focus{transform:translateY(0)}body.jt-dialog-open{overflow:hidden}
-      html[data-theme="dark"] .side{background:#0a111c;border-color:#2a3649}html[data-theme="dark"] .nav button{color:#c2ccda}html[data-theme="dark"] .nav button:hover,html[data-theme="dark"] .nav button.active{color:#fff}html[data-theme="dark"] .jt-nav-group-title{color:#91a0b5}html[data-theme="dark"] .jt-sidebar-search input{background:#111b2a;color:#f1f5f9;border-color:#38465a}html[data-theme="dark"] .jt-sidebar-search input::placeholder{color:#9aa8bb}
+      html[data-theme="dark"] .side{background:#0a111c;border-color:#2a3649}html[data-theme="dark"] .bert-nav-button,html[data-theme="dark"] .bert-nav-toggle{color:#c2ccda}html[data-theme="dark"] .bert-nav-button:hover,html[data-theme="dark"] .bert-nav-button.active,html[data-theme="dark"] .bert-nav-toggle:hover{color:#fff}html[data-theme="dark"] .bert-nav-search input{background:#111b2a;color:#f1f5f9;border-color:#38465a}html[data-theme="dark"] .jt-sidebar-search input::placeholder{color:#9aa8bb}
       html[data-theme="dark"] .job-insight.role,html[data-theme="dark"] .intel-ai-note,html[data-theme="dark"] .profile-guide{background:var(--accent2);color:var(--text)}html[data-theme="dark"] .reject-box,html[data-theme="dark"] .detected-box,html[data-theme="dark"] .sj-callout,html[data-theme="dark"] .source-hero,html[data-theme="dark"] .source-toolbar,html[data-theme="dark"] .sj-hero,html[data-theme="dark"] .sj-summary,html[data-theme="dark"] .fit-row,html[data-theme="dark"] .fit-box,html[data-theme="dark"] .intel-evidence-row,html[data-theme="dark"] .application-column-header,html[data-theme="dark"] .application-event,html[data-theme="dark"] .application-empty,html[data-theme="dark"] .job-detail-fact{background:var(--surface-soft);border-color:var(--line);color:var(--text)}
       html[data-theme="dark"] :where(.job-company,.job-meta,.job-language-reasons,.why-list,.source-meta,.sj-name-meta,.application-card-meta,.application-card-company,.intel-meta){color:var(--muted)}html[data-theme="dark"] hr{border-color:var(--line)!important}html[data-theme="dark"] a{color:var(--accent)}html[data-theme="dark"] .btn:hover{border-color:#61718a;background:#1d2939}html[data-theme="dark"] .btn.primary:hover,html[data-theme="dark"] .btn.suitable:hover{background:#5c7be2;border-color:#5c7be2;color:#fff}
       @media(max-width:720px){.table-wrap tr{background:var(--card);border-color:var(--line)}.table-wrap td{border-color:var(--line)}.jt-interface-grid{grid-template-columns:1fr}}
@@ -190,80 +185,27 @@
     `; document.head.appendChild(style);
   }
 
-  function decorateNav(){
-    document.querySelectorAll('.nav button[data-tab]').forEach(btn=>{
-      const key=btn.dataset.tab; const meta=NAV[key]||['•',btn.textContent.trim()];
-      if(!btn.querySelector('.jt-nav-icon')) btn.innerHTML=`<span class="jt-nav-icon" aria-hidden="true">${meta[0]}</span><span class="jt-nav-label">${meta[1]}</span>`;
-      btn.setAttribute('title',meta[1]);
-    });
-  }
-
-  function setGroupExpanded(group,expanded){
-    if(!group)return;
-    group.classList.toggle('is-open',expanded);
-    group.querySelector(':scope > .jt-nav-primary-row > .jt-nav-expander, :scope > .jt-nav-group-toggle')?.setAttribute('aria-expanded',String(expanded));
-  }
-
-  function groupNavigation(){
-    const nav=document.querySelector('.nav'); if(!nav||nav.querySelector('.jt-nav-group')) return;
-    const buttons=new Map([...nav.querySelectorAll(':scope > button[data-tab]')].map(btn=>[btn.dataset.tab,btn]));
-    const active=[...buttons.values()].find(btn=>btn.classList.contains('active'));
-    nav.replaceChildren();
-    for(const group of GROUPS){
-      const primary=group.primary?buttons.get(group.primary):null;
-      const items=group.tabs.map(tab=>buttons.get(tab)).filter(Boolean);
-      if(!primary&&!items.length)continue;
-      const wrap=document.createElement('div');wrap.className='jt-nav-group';wrap.dataset.group=group.key;
-      const panel=document.createElement('div');panel.id=`jt-nav-${group.key}`;panel.className='jt-nav-group-panel';
-      items.forEach(btn=>panel.appendChild(btn));
-      if(primary){
-        primary.classList.add('jt-nav-primary');
-        const row=document.createElement('div');row.className='jt-nav-primary-row';row.appendChild(primary);
-        if(items.length){
-          const expander=document.createElement('button');expander.type='button';expander.className='jt-nav-expander';expander.setAttribute('aria-controls',panel.id);expander.setAttribute('aria-label',`Toggle ${group.label} submenu`);expander.innerHTML='<span class="jt-nav-chevron" aria-hidden="true">›</span>';
-          expander.addEventListener('click',()=>setGroupExpanded(wrap,!wrap.classList.contains('is-open')));
-          row.appendChild(expander);
-        }
-        wrap.appendChild(row);
-      }else{
-        const toggle=document.createElement('button');toggle.type='button';toggle.className='jt-nav-group-toggle';toggle.setAttribute('aria-controls',panel.id);toggle.innerHTML=`<span class="jt-group-icon" aria-hidden="true">${group.icon}</span><span class="jt-group-label">${group.label}</span><span class="jt-nav-chevron" aria-hidden="true">›</span>`;
-        toggle.addEventListener('click',()=>{const app=document.querySelector('.app');if(app?.classList.contains('jt-collapsed')){app.classList.remove('jt-collapsed');try{localStorage.setItem('jobtrack-sidebar-collapsed','0')}catch(_){}}setGroupExpanded(wrap,!wrap.classList.contains('is-open'))});
-        wrap.appendChild(toggle);
-      }
-      if(items.length)wrap.appendChild(panel);
-      const containsActive=primary===active||items.includes(active);wrap.classList.toggle('has-active',containsActive);setGroupExpanded(wrap,containsActive);
-      nav.appendChild(wrap);
+  function localizedLabel(label){return interfaceLanguage==='tr'?(TURKISH[label]||label):label}
+  function destinationMarkup(tab){const meta=DESTINATIONS[tab]||{icon:'•',label:tab};return `<span class="bert-nav-icon" aria-hidden="true">${meta.icon}</span><span class="bert-nav-label">${localizedLabel(meta.label)}</span>`}
+  function setSectionExpanded(section,expanded){if(!section)return;section.classList.toggle('is-open',expanded);section.querySelector(':scope > .bert-nav-row > .bert-nav-expander, :scope > .bert-nav-toggle')?.setAttribute('aria-expanded',String(expanded))}
+  function buildNavigation(){
+    const nav=document.querySelector('.nav');if(!nav||nav.dataset.bertNavigation==='ready')return;
+    const sourceButtons=new Map([...nav.querySelectorAll(':scope > button[data-tab]')].map(button=>[button.dataset.tab,button]));const active=[...sourceButtons.values()].find(button=>button.classList.contains('active'));nav.replaceChildren();nav.dataset.bertNavigation='ready';
+    for(const data of NAVIGATION){const primary=data.primary?sourceButtons.get(data.primary):null;const children=data.children.map(tab=>sourceButtons.get(tab)).filter(Boolean);if(!primary&&!children.length)continue;
+      const section=document.createElement('section');section.className='bert-nav-section';section.dataset.section=data.key;const submenu=document.createElement('div');submenu.id=`bert-nav-${data.key}`;submenu.className='bert-nav-submenu';
+      children.forEach(button=>{button.className='bert-nav-button';button.innerHTML=destinationMarkup(button.dataset.tab);button.title=localizedLabel(DESTINATIONS[button.dataset.tab]?.label||button.dataset.tab);submenu.appendChild(button)});
+      if(primary){primary.className='bert-nav-button';primary.innerHTML=destinationMarkup(primary.dataset.tab);primary.title=localizedLabel(data.label);const row=document.createElement('div');row.className='bert-nav-row';row.appendChild(primary);
+        if(children.length){const expander=document.createElement('button');expander.type='button';expander.className='bert-nav-expander';expander.setAttribute('aria-controls',submenu.id);expander.setAttribute('aria-label',`Toggle ${localizedLabel(data.label)} submenu`);expander.innerHTML='<span class="bert-nav-chevron" aria-hidden="true">›</span>';expander.addEventListener('click',()=>setSectionExpanded(section,!section.classList.contains('is-open')));row.appendChild(expander)}section.appendChild(row)
+      }else{const toggle=document.createElement('button');toggle.type='button';toggle.className='bert-nav-toggle';toggle.title=localizedLabel(data.label);toggle.setAttribute('aria-controls',submenu.id);toggle.innerHTML=`<span class="bert-nav-icon" aria-hidden="true">${data.icon}</span><span class="bert-nav-label">${localizedLabel(data.label)}</span><span class="bert-nav-chevron" aria-hidden="true">›</span>`;toggle.addEventListener('click',()=>{const app=document.querySelector('.app');if(app?.classList.contains('jt-collapsed')){app.classList.remove('jt-collapsed');try{localStorage.setItem('jobtrack-sidebar-collapsed','0')}catch(_){}}setSectionExpanded(section,!section.classList.contains('is-open'))});section.appendChild(toggle)}
+      if(children.length)section.appendChild(submenu);const containsActive=primary===active||children.includes(active);section.classList.toggle('has-active',containsActive);setSectionExpanded(section,containsActive);nav.appendChild(section)
     }
   }
-
-  function revealGroup(tab){
-    const btn=document.querySelector(`.nav button[data-tab="${tab}"]`), group=btn?.closest('.jt-nav-group'); if(!group) return;
-    document.querySelectorAll('.jt-nav-group').forEach(node=>{const active=node===group;node.classList.toggle('has-active',active);if(active)setGroupExpanded(node,true)});
-  }
-
-  function updatePageContext(tab){
-    const group=GROUPS.find(item=>item.primary===tab||item.tabs.includes(tab));
-    if($('jtBreadcrumb'))$('jtBreadcrumb').textContent=`${String(SHELL.appName||'Bert')} / ${group?.label||'Workspace'}`;
-    if($('jtPageDescription'))$('jtPageDescription').textContent=PAGE_CONTEXT[tab]||'Manage your job search workspace.';
-  }
-
+  function revealSection(tab){const button=document.querySelector(`.nav button[data-tab="${tab}"]`),section=button?.closest('.bert-nav-section');if(!section)return;document.querySelectorAll('.bert-nav-section').forEach(node=>{const selected=node===section;node.classList.toggle('has-active',selected);if(selected)setSectionExpanded(node,true)})}
+  function updatePageContext(tab){const group=NAVIGATION.find(item=>item.primary===tab||item.children.includes(tab));if($('jtBreadcrumb'))$('jtBreadcrumb').textContent=`${String(SHELL.appName||'Bert')} / ${localizedLabel(group?.label||'Workspace')}`;if($('jtPageDescription'))$('jtPageDescription').textContent=localizedLabel(PAGE_CONTEXT[tab]||'Manage your job search workspace.')}
   function installNavigationSearch(side){
-    const nav=side.querySelector('.nav');if(!nav||$('jtNavigationSearch'))return;
-    const search=document.createElement('label');search.className='jt-sidebar-search';
-    search.innerHTML='<span class="jt-search-icon" aria-hidden="true">⌕</span><input id="jtNavigationSearch" type="search" placeholder="Find a page…" aria-label="Search navigation"><span class="jt-search-shortcut" aria-hidden="true">/</span>';
-    side.insertBefore(search,nav);
-    const empty=document.createElement('div');empty.className='jt-nav-empty';empty.textContent='No matching pages';empty.hidden=true;nav.appendChild(empty);
-    search.querySelector('input').addEventListener('input',event=>{
-      const query=event.target.value.trim().toLowerCase();let matches=0;
-      nav.querySelectorAll('.jt-nav-group').forEach(group=>{
-        const groupLabel=(GROUPS.find(item=>item.key===group.dataset.group)?.label||'').toLowerCase();let visible=0;
-        group.querySelectorAll('button[data-tab]').forEach(button=>{const show=!query||groupLabel.includes(query)||button.textContent.toLowerCase().includes(query);button.hidden=!show;if(show){visible++;matches++}});
-        group.hidden=!visible;
-        if(query&&visible)setGroupExpanded(group,true);
-        if(!query){const active=Boolean(group.querySelector('button[data-tab].active'));group.classList.toggle('has-active',active);setGroupExpanded(group,active)}
-      });
-      empty.hidden=!query||matches>0;
-    });
+    const nav=side.querySelector('.nav');if(!nav||$('jtNavigationSearch'))return;const search=document.createElement('label');search.className='bert-nav-search';search.innerHTML='<span class="bert-nav-search-icon" aria-hidden="true">⌕</span><input id="jtNavigationSearch" type="search" placeholder="Find a page…" aria-label="Search navigation"><span class="bert-nav-search-shortcut" aria-hidden="true">/</span>';side.insertBefore(search,nav);
+    const empty=document.createElement('div');empty.className='bert-nav-empty';empty.textContent=localizedLabel('No matching pages');empty.hidden=true;nav.appendChild(empty);search.querySelector('input').addEventListener('input',event=>{const locale=interfaceLanguage==='tr'?'tr':'en',query=event.target.value.trim().toLocaleLowerCase(locale);let matches=0;
+      nav.querySelectorAll('.bert-nav-section').forEach(section=>{const sectionLabel=section.querySelector(':scope > .bert-nav-row .bert-nav-label, :scope > .bert-nav-toggle .bert-nav-label')?.textContent.toLocaleLowerCase(locale)||'';let visible=0;section.querySelectorAll('button[data-tab]').forEach(button=>{const label=button.querySelector('.bert-nav-label')?.textContent.toLocaleLowerCase(locale)||'';const show=!query||sectionLabel.includes(query)||label.includes(query);button.hidden=!show;if(show){visible++;matches++}});section.hidden=!visible;if(query&&visible)setSectionExpanded(section,true);if(!query){const active=Boolean(section.querySelector('button[data-tab].active'));section.classList.toggle('has-active',active);setSectionExpanded(section,active)}});empty.hidden=!query||matches>0})
   }
 
   function installInterfaceSettings(nav,main){
@@ -279,7 +221,7 @@
     const theme=$('jtThemeSelect');theme.value=themePreference;theme.addEventListener('change',event=>{try{localStorage.setItem(THEME_KEY,event.target.value)}catch(_){}applyTheme(event.target.value);document.querySelectorAll('.jt-theme-swatch').forEach(swatch=>swatch.classList.toggle('active',swatch.dataset.themeOption===event.target.value))});
     document.querySelectorAll('.jt-theme-swatch').forEach(swatch=>swatch.classList.toggle('active',swatch.dataset.themeOption===themePreference));
     const language=$('jtInterfaceLanguage');language.value=interfaceLanguage;language.addEventListener('change',event=>{try{localStorage.setItem('bert-interface-language',event.target.value)}catch(_){}location.reload()});
-    button.addEventListener('click',()=>{document.querySelectorAll('.section').forEach(node=>node.classList.remove('active'));document.querySelectorAll('.nav button[data-tab]').forEach(node=>node.classList.remove('active'));section.classList.add('active');button.classList.add('active');if($('pageTitle'))$('pageTitle').textContent='Interface';revealGroup('interface');updatePageContext('interface');try{localStorage.setItem('jobtrack-tab','interface')}catch(_){}});
+    button.addEventListener('click',()=>{document.querySelectorAll('.section').forEach(node=>node.classList.remove('active'));document.querySelectorAll('.nav button[data-tab]').forEach(node=>node.classList.remove('active'));section.classList.add('active');button.classList.add('active');if($('pageTitle'))$('pageTitle').textContent='Interface';revealSection('interface');updatePageContext('interface');try{localStorage.setItem('jobtrack-tab','interface')}catch(_){}});
   }
 
   function installOverviewShortcuts(){
@@ -301,6 +243,7 @@
   }
 
   function setMenu(open){
+    if(open&&window.innerWidth<=980)document.querySelector('.app')?.classList.remove('jt-collapsed');
     document.querySelector('.side')?.classList.toggle('jt-open',open);
     $('.jtSidebarOverlay')?.classList.toggle('jt-open',open);
     document.body.classList.toggle('jt-menu-open',open);
@@ -325,20 +268,20 @@
     const pageTitle=$('pageTitle');if(pageTitle){const heading=document.createElement('div');heading.className='jt-page-heading';heading.innerHTML='<div id="jtBreadcrumb" class="jt-breadcrumb"></div>';pageTitle.before(heading);heading.appendChild(pageTitle);const description=document.createElement('div');description.id='jtPageDescription';description.className='jt-page-description';heading.appendChild(description)}
     const mobile=document.createElement('button'); mobile.id='jtMobileMenu'; mobile.className='jt-mobile-menu'; mobile.type='button'; mobile.setAttribute('aria-label','Open navigation'); mobile.setAttribute('aria-expanded','false'); mobile.textContent='☰'; top.insertBefore(mobile,top.firstChild);
     const overlay=document.createElement('div'); overlay.id='jtSidebarOverlay'; overlay.className='jt-sidebar-overlay'; document.body.appendChild(overlay);
-    try{if(localStorage.getItem('jobtrack-sidebar-collapsed')==='1')app.classList.add('jt-collapsed')}catch(_){ }
+    try{if(window.innerWidth>980&&localStorage.getItem('jobtrack-sidebar-collapsed')==='1')app.classList.add('jt-collapsed')}catch(_){ }
     brand.querySelector('.jt-collapse').onclick=()=>{app.classList.toggle('jt-collapsed');try{localStorage.setItem('jobtrack-sidebar-collapsed',app.classList.contains('jt-collapsed')?'1':'0')}catch(_){}};
     mobile.onclick=()=>setMenu(!side.classList.contains('jt-open')); overlay.onclick=()=>setMenu(false);
     document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(document.activeElement===$('jtNavigationSearch')&&$('jtNavigationSearch').value){$('jtNavigationSearch').value='';$('jtNavigationSearch').dispatchEvent(new Event('input'))}else setMenu(false)}if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)){e.preventDefault();if(window.innerWidth<=980)setMenu(true);$('jtNavigationSearch')?.focus()}});
     side.addEventListener('click',e=>{if(e.target.closest('.nav button[data-tab]')&&window.innerWidth<=980)setMenu(false)});
-    installInterfaceSettings(side.querySelector('.nav'),main);groupNavigation();decorateNav();installNavigationSearch(side);annotateTables();installOverviewShortcuts();
+    installInterfaceSettings(side.querySelector('.nav'),main);buildNavigation();installNavigationSearch(side);annotateTables();installOverviewShortcuts();
     const footer=document.createElement('div');footer.className='jt-sidebar-footer';footer.innerHTML='<div class="jt-user-avatar" aria-hidden="true"></div><div class="jt-user-copy"><span class="jt-user-label"></span><span class="jt-user-meta"></span></div>';footer.querySelector('.jt-user-avatar').textContent=SHELL.isAdmin?'A':'U';footer.querySelector('.jt-user-label').textContent=SHELL.isAdmin?'Administrator':'Your workspace';footer.querySelector('.jt-user-meta').textContent=`Version ${String(SHELL.version||'16')}`;side.appendChild(footer);applyTheme(themePreference);
     updatePageContext(document.querySelector('.nav button[data-tab].active')?.dataset.tab||'overview');
-    side.addEventListener('click',e=>{const btn=e.target.closest('.nav button[data-tab]');if(!btn)return;revealGroup(btn.dataset.tab);updatePageContext(btn.dataset.tab);try{localStorage.setItem('jobtrack-tab',btn.dataset.tab)}catch(_){}setTimeout(()=>{if($('pageTitle'))$('pageTitle').textContent=(NAV[btn.dataset.tab]||[])[1]||btn.textContent.trim()},0)});
+    side.addEventListener('click',e=>{const btn=e.target.closest('.nav button[data-tab]');if(!btn)return;revealSection(btn.dataset.tab);updatePageContext(btn.dataset.tab);try{localStorage.setItem('jobtrack-tab',btn.dataset.tab)}catch(_){}setTimeout(()=>{if($('pageTitle'))$('pageTitle').textContent=localizedLabel(DESTINATIONS[btn.dataset.tab]?.label||btn.textContent.trim())},0)});
     try{const saved=localStorage.getItem('jobtrack-tab');const savedButton=saved?document.querySelector(`.nav button[data-tab="${saved}"]`):null;if(savedButton&&!savedButton.classList.contains('active'))savedButton.click()}catch(_){}
     translateInterface();
-    const observer=new MutationObserver(muts=>{decorateNav();for(const m of muts){m.addedNodes.forEach(n=>{if(n.nodeType===1)annotateTables(n);translateInterface(n)})}annotateTables()});
+    const observer=new MutationObserver(muts=>{for(const m of muts){m.addedNodes.forEach(n=>{if(n.nodeType===1)annotateTables(n);translateInterface(n)})}annotateTables()});
     observer.observe(document.body,{childList:true,subtree:true});
-    window.addEventListener('resize',()=>{if(window.innerWidth>980)setMenu(false)});
+    window.addEventListener('resize',()=>{if(window.innerWidth>980)setMenu(false);else app.classList.remove('jt-collapsed')});
   }
   installShell();
 })();

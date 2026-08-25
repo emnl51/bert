@@ -16,7 +16,9 @@
 - Moves language and theme preferences from the sidebar footer into a dedicated Settings → Interface page.
 - Replaces expandable sidebar groups with a flatter, quieter navigation structure that exposes destinations directly.
 - Reorganizes sidebar destinations under Control Panel, Jobs, Job Review, Settings, and Administration.
-- Redesigns the sidebar as a true top-level and collapsible submenu hierarchy with clearer active states.
+- Rebuilds the sidebar navigation component from scratch with a clean five-section hierarchy, localized search, and clearer active states.
+- Makes collapsed desktop navigation a centered icon-only rail and keeps the complete navigation visible on mobile.
+- Version-stamps the UI shell asset so browsers load the current sidebar after an update.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
 ## 19.0.0 — Application Workspace
