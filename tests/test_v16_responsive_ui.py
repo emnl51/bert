@@ -47,6 +47,11 @@ def test_v16_shell_has_searchable_hierarchical_navigation_and_workspace_context(
     assert "Version ${String(SHELL.version" in js
     assert "main=document.querySelector('.main')" in js
     assert "if(!app||!side||!main||!top||!brand)" in js
+    assert "--jt-sidebar:220px" in js
+    assert "--jt-sidebar-mini:60px" in js
+    assert "--jt-radius:8px" in js
+    assert "bert-context-tabs" in js
+    assert "bert-nav-route-store" in js
 
 
 def test_workspace_has_persistent_accessible_color_themes():
