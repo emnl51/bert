@@ -8,6 +8,12 @@ def test_navigation_uses_five_grouped_main_menus():
     assert "primary:'overview',children:[]" in text
     assert "primary:'searchJobs',children:['applications']" in text
     assert "primary:'jobReview',children:['intelligence','candidates','learning']" in text
+    assert (
+        "primary:'profiles',children:['interface','sources','search','keywords','notifications'],tabsOnly:true" in text
+    )
+    assert "primary:'runs',children:['users','systemEmail','database','logs','updates'],tabsOnly:true" in text
+    assert "CONTEXT_TABS" in text
+    assert "installContextTabs" in text
     assert "buildNavigation" in text
     assert "setSectionExpanded" in text
     assert "bert-nav-row" in text
