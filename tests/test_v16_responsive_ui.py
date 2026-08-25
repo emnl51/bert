@@ -94,8 +94,8 @@ def test_v16_main_loads_shell_last():
     shell = Path("app/ui-shell.js").read_text(encoding="utf-8")
     assert "from .version import VERSION" in text
     assert "app.version = VERSION" in text
-    assert '<script src="/ui-shell.js"></script>' in text
-    assert text.index('<script src="/log-ui.js"></script>') < text.index('<script src="/ui-shell.js"></script>')
+    assert 'f\'<script src="/ui-shell.js?v={VERSION}"></script>\'' in text
+    assert text.index('<script src="/log-ui.js"></script>') < text.index('f\'<script src="/ui-shell.js?v={VERSION}"></script>\'')
     assert '{"appName": settings.app_name, "version": VERSION}' in text
     assert "window.APP_SHELL" in text
     assert "SHELL.appName" in shell
