@@ -251,8 +251,8 @@
   }
 
   function installShell(){
-    const app=document.querySelector('.app'), side=document.querySelector('.side'), top=document.querySelector('.top'), brand=document.querySelector('.brand');
-    if(!app||!side||!top||!brand) return setTimeout(installShell,80);
+    const app=document.querySelector('.app'), side=document.querySelector('.side'), main=document.querySelector('.main'), top=document.querySelector('.top'), brand=document.querySelector('.brand');
+    if(!app||!side||!main||!top||!brand) return setTimeout(installShell,80);
     installStyles();
     if(!document.querySelector('meta[name="theme-color"]')){const meta=document.createElement('meta');meta.name='theme-color';document.head.appendChild(meta)}
     if(!$('jtMainContent'))app.querySelector('.main')?.setAttribute('id','jtMainContent');
