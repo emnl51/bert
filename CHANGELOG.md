@@ -19,6 +19,16 @@
 - Redesigns the sidebar as a true top-level and collapsible submenu hierarchy with clearer active states.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 19.1.3
+
+### What's Changed
+* Redesign sidebar with hierarchical navigation by @emnl51 in https://github.com/emnl51/bert/pull/74
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/19.1.2...19.1.3
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/19.1.3)
+
 ## 19.0.0 — Application Workspace
 
 ### Added
