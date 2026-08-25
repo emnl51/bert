@@ -8,6 +8,10 @@
 - Adds a focused job-detail dialog with the complete description, fit evidence, work schedule, source, date, and original-listing link.
 - Adds an idempotent release workflow that turns published GitHub Release notes into an automated changelog pull request.
 
+### Fixed
+
+- Prevents the sidebar shell from stopping before the rebuilt navigation is mounted.
+
 ### Changed
 
 - Simplifies Job Review cards to the information needed for scanning and moves dense metadata into the detail view.
