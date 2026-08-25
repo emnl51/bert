@@ -45,6 +45,8 @@ def test_v16_shell_has_searchable_hierarchical_navigation_and_workspace_context(
     assert "jt-quick-actions" in js
     assert "jt-sidebar-footer" in js
     assert "Version ${String(SHELL.version" in js
+    assert "main=document.querySelector(\'.main\')" in js
+    assert "if(!app||!side||!main||!top||!brand)" in js
 
 
 def test_workspace_has_persistent_accessible_color_themes():
