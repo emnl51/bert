@@ -27,7 +27,7 @@ def test_profile_guide_builds_provider_queries_and_checks_targeting_before_apply
     assert "window.profileGuideBuildPlan=buildProfileGuidePlan" in text
     assert 'id="pfGuideQueryPreview"' in text
     assert 'id="pfGuideChecks"' in text
-    assert "Apply guide to profile" in text
+    assert "Add suggestions now" in text
     assert "keywords.language=" in text
 
 
@@ -38,14 +38,39 @@ def test_profile_guide_covers_german_and_english_proficiency():
     assert 'id="pfGuideLanguageDe"' in text
     assert 'id="pfGuideLanguageEn"' in text
     assert 'value="b2">B2' in text
+    assert 'value="c2">C2' in text
+
+
+def test_profile_editor_persists_essentials_and_preserves_custom_terms():
+    text = Path("app/profile-ui.js").read_text(encoding="utf-8")
+    for field in (
+        "current_english_level",
+        "preferred_weekly_hours",
+        "availability",
+        "role_level",
+        'id="pfGuideRoleLevel"',
+        'id="pfAdvanced"',
+    ):
+        assert field in text
+    assert "mergeGuideTerms" in text
+    assert "existing custom terms were preserved" in text
+    assert "if(guideDirty)applyProfileGuide(true)" in text
+
+
+def test_quality_guide_distinguishes_technician_and_engineering_roles():
+    text = Path("app/profile-ui.js").read_text(encoding="utf-8")
+    assert "quality_technician" in text
+    assert "quality_engineering" in text
+    assert "Quality Technician" not in text  # aliases stay normalized/lowercase
+    assert "Qualitätsprüfer" in text
 
 
 def test_turkish_translations_cover_guided_profile_workflow():
     text = Path("app/ui-shell.js").read_text(encoding="utf-8")
-    assert "Rehberli profil oluşturucu" in text
+    assert "Temel profil ayarları" in text
     assert "Mevcut İngilizce seviyeniz" in text
     assert "Öğleden sonra / 14.00 sonrası" in text
-    assert "Kılavuzu profile uygula" in text
+    assert "Önerileri şimdi ekle" in text
 
 
 def test_both_search_paths_pass_profile_english_ability_into_matching():

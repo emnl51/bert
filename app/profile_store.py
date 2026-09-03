@@ -19,7 +19,11 @@ CREATE TABLE IF NOT EXISTS search_profiles (
     min_language_score INTEGER NOT NULL DEFAULT 40,
     language_weight INTEGER NOT NULL DEFAULT 35,
     current_german_level TEXT NOT NULL DEFAULT 'a2_b1',
+    current_english_level TEXT NOT NULL DEFAULT 'b1',
     max_german_requirement TEXT NOT NULL DEFAULT 'b1',
+    preferred_weekly_hours INTEGER,
+    availability TEXT NOT NULL DEFAULT 'any',
+    role_level TEXT NOT NULL DEFAULT 'any',
     show_b2_stretch INTEGER NOT NULL DEFAULT 1,
     hide_german_heavy INTEGER NOT NULL DEFAULT 1,
     prefer_german_growth INTEGER NOT NULL DEFAULT 1,
@@ -197,7 +201,7 @@ def _backfill_role_relevance(con) -> None:
 
     rows = con.execute(
         """SELECT s.job_key,s.profile_id,j.source,j.title,j.company,j.location,j.url,j.description,
-                  j.created_at,j.remote,p.keywords_json
+                  j.created_at,j.remote,p.keywords_json,p.role_level
            FROM job_profile_scores s
            JOIN jobs j ON j.job_key=s.job_key
            JOIN search_profiles p ON p.id=s.profile_id"""
@@ -215,7 +219,9 @@ def _backfill_role_relevance(con) -> None:
             created_at=row["created_at"],
             remote=bool(row["remote"]),
         )
-        relevant = row["source"] == "Manual" or assess_role_relevance(job, keywords).relevant
+        relevant = (
+            row["source"] == "Manual" or assess_role_relevance(job, keywords, role_level=row["role_level"]).relevant
+        )
         con.execute(
             "UPDATE job_profile_scores SET role_relevant=? WHERE job_key=? AND profile_id=?",
             (int(relevant), row["job_key"], row["profile_id"]),
@@ -236,6 +242,8 @@ def _migrate_profile_ownership(con) -> None:
             target_location TEXT NOT NULL DEFAULT 'Berlin',location_terms_json TEXT NOT NULL DEFAULT '[]',
             min_score INTEGER NOT NULL DEFAULT 35,min_language_score INTEGER NOT NULL DEFAULT 40,
             language_weight INTEGER NOT NULL DEFAULT 35,current_german_level TEXT NOT NULL DEFAULT 'a2_b1',
+            current_english_level TEXT NOT NULL DEFAULT 'b1',preferred_weekly_hours INTEGER,
+            availability TEXT NOT NULL DEFAULT 'any',role_level TEXT NOT NULL DEFAULT 'any',
             max_german_requirement TEXT NOT NULL DEFAULT 'b1',show_b2_stretch INTEGER NOT NULL DEFAULT 1,
             hide_german_heavy INTEGER NOT NULL DEFAULT 1,prefer_german_growth INTEGER NOT NULL DEFAULT 1,
             content_languages_json TEXT NOT NULL DEFAULT '[\"de\",\"en\",\"mixed\"]',
@@ -246,11 +254,12 @@ def _migrate_profile_ownership(con) -> None:
         con.execute(
             """INSERT INTO search_profiles_v18
             (id,user_id,name,slug,enabled,is_default,target_location,location_terms_json,min_score,
-             min_language_score,language_weight,current_german_level,max_german_requirement,
+             min_language_score,language_weight,current_german_level,current_english_level,
+             preferred_weekly_hours,availability,role_level,max_german_requirement,
              show_b2_stretch,hide_german_heavy,prefer_german_growth,content_languages_json,
              keywords_json,created_at,updated_at)
             SELECT id,NULL,name,slug,enabled,is_default,target_location,location_terms_json,min_score,
-             min_language_score,language_weight,current_german_level,max_german_requirement,
+             min_language_score,language_weight,current_german_level,'b1',NULL,'any','any',max_german_requirement,
              show_b2_stretch,hide_german_heavy,prefer_german_growth,
              COALESCE(content_languages_json,'[\"de\",\"en\",\"mixed\"]'),keywords_json,created_at,updated_at
             FROM search_profiles"""
@@ -279,6 +288,28 @@ def ensure_profile_schema(user_id: int | None = None) -> None:
             con.execute(
                 'ALTER TABLE search_profiles ADD COLUMN content_languages_json TEXT NOT NULL DEFAULT \'["de","en","mixed"]\''
             )
+        english_column_added = "current_english_level" not in columns
+        if english_column_added:
+            con.execute("ALTER TABLE search_profiles ADD COLUMN current_english_level TEXT NOT NULL DEFAULT 'b1'")
+        if "preferred_weekly_hours" not in columns:
+            con.execute("ALTER TABLE search_profiles ADD COLUMN preferred_weekly_hours INTEGER")
+        if "availability" not in columns:
+            con.execute("ALTER TABLE search_profiles ADD COLUMN availability TEXT NOT NULL DEFAULT 'any'")
+        if "role_level" not in columns:
+            con.execute("ALTER TABLE search_profiles ADD COLUMN role_level TEXT NOT NULL DEFAULT 'any'")
+        if english_column_added:
+            for row in con.execute("SELECT id,keywords_json FROM search_profiles").fetchall():
+                keywords = json.loads(row["keywords_json"] or "{}")
+                legacy = next(
+                    (
+                        term.removeprefix("english_")
+                        for term in (keywords.get("language") or {})
+                        if term.startswith("english_")
+                    ),
+                    None,
+                )
+                if legacy in {"a2", "b1", "b2", "c1", "c2"}:
+                    con.execute("UPDATE search_profiles SET current_english_level=? WHERE id=?", (legacy, row["id"]))
         score_columns = {row[1] for row in con.execute("PRAGMA table_info(job_profile_scores)").fetchall()}
         if "role_relevant" not in score_columns:
             con.execute("ALTER TABLE job_profile_scores ADD COLUMN role_relevant INTEGER NOT NULL DEFAULT 0")
@@ -385,6 +416,9 @@ def _row_to_profile(row) -> dict[str, Any]:
     p["show_b2_stretch"] = bool(p["show_b2_stretch"])
     p["hide_german_heavy"] = bool(p["hide_german_heavy"])
     p["prefer_german_growth"] = bool(p["prefer_german_growth"])
+    p["preferred_weekly_hours"] = (
+        int(p["preferred_weekly_hours"]) if p.get("preferred_weekly_hours") is not None else None
+    )
     p["content_languages"] = json.loads(p.pop("content_languages_json") or "[]")
     p["location_terms"] = json.loads(p.pop("location_terms_json") or "[]")
     p["keywords"] = json.loads(p.pop("keywords_json") or "{}")
@@ -433,7 +467,11 @@ def save_profile(data: dict[str, Any], profile_id: int | None = None, user_id: i
         "min_language_score": int(data.get("min_language_score", 40)),
         "language_weight": int(data.get("language_weight", 35)),
         "current_german_level": data.get("current_german_level", "a2_b1"),
+        "current_english_level": data.get("current_english_level", "b1"),
         "max_german_requirement": data.get("max_german_requirement", "b1"),
+        "preferred_weekly_hours": data.get("preferred_weekly_hours"),
+        "availability": data.get("availability", "any"),
+        "role_level": data.get("role_level", "any"),
         "show_b2_stretch": int(bool(data.get("show_b2_stretch", True))),
         "hide_german_heavy": int(bool(data.get("hide_german_heavy", True))),
         "prefer_german_growth": int(bool(data.get("prefer_german_growth", True))),
@@ -445,15 +483,15 @@ def save_profile(data: dict[str, Any], profile_id: int | None = None, user_id: i
             con.execute("UPDATE search_profiles SET is_default=0 WHERE user_id IS ?", (user_id,))
         if profile_id:
             con.execute(
-                """UPDATE search_profiles SET name=:name,slug=:slug,enabled=:enabled,is_default=:is_default,target_location=:target_location,location_terms_json=:location_terms_json,min_score=:min_score,min_language_score=:min_language_score,language_weight=:language_weight,current_german_level=:current_german_level,max_german_requirement=:max_german_requirement,show_b2_stretch=:show_b2_stretch,hide_german_heavy=:hide_german_heavy,prefer_german_growth=:prefer_german_growth,content_languages_json=:content_languages_json,keywords_json=:keywords_json,updated_at=:updated_at WHERE id=:id AND user_id IS :user_id""",
+                """UPDATE search_profiles SET name=:name,slug=:slug,enabled=:enabled,is_default=:is_default,target_location=:target_location,location_terms_json=:location_terms_json,min_score=:min_score,min_language_score=:min_language_score,language_weight=:language_weight,current_german_level=:current_german_level,current_english_level=:current_english_level,max_german_requirement=:max_german_requirement,preferred_weekly_hours=:preferred_weekly_hours,availability=:availability,role_level=:role_level,show_b2_stretch=:show_b2_stretch,hide_german_heavy=:hide_german_heavy,prefer_german_growth=:prefer_german_growth,content_languages_json=:content_languages_json,keywords_json=:keywords_json,updated_at=:updated_at WHERE id=:id AND user_id IS :user_id""",
                 {**fields, "updated_at": now, "id": profile_id, "user_id": user_id},
             )
             if con.execute("SELECT changes()").fetchone()[0] == 0:
                 raise ValueError("Profile not found")
             return profile_id
         cur = con.execute(
-            """INSERT INTO search_profiles(user_id,name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,max_german_requirement,show_b2_stretch,hide_german_heavy,prefer_german_growth,content_languages_json,keywords_json,created_at,updated_at)
-                           VALUES(:user_id,:name,:slug,:enabled,:is_default,:target_location,:location_terms_json,:min_score,:min_language_score,:language_weight,:current_german_level,:max_german_requirement,:show_b2_stretch,:hide_german_heavy,:prefer_german_growth,:content_languages_json,:keywords_json,:created_at,:updated_at)""",
+            """INSERT INTO search_profiles(user_id,name,slug,enabled,is_default,target_location,location_terms_json,min_score,min_language_score,language_weight,current_german_level,current_english_level,max_german_requirement,preferred_weekly_hours,availability,role_level,show_b2_stretch,hide_german_heavy,prefer_german_growth,content_languages_json,keywords_json,created_at,updated_at)
+                           VALUES(:user_id,:name,:slug,:enabled,:is_default,:target_location,:location_terms_json,:min_score,:min_language_score,:language_weight,:current_german_level,:current_english_level,:max_german_requirement,:preferred_weekly_hours,:availability,:role_level,:show_b2_stretch,:hide_german_heavy,:prefer_german_growth,:content_languages_json,:keywords_json,:created_at,:updated_at)""",
             {**fields, "user_id": user_id, "created_at": now, "updated_at": now},
         )
         return int(cur.lastrowid)
@@ -469,6 +507,20 @@ def delete_profile(profile_id: int, user_id: int | None = None) -> None:
             return
         if row["is_default"]:
             raise ValueError("Default profile cannot be deleted")
+        has_search_jobs = con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='search_jobs'"
+        ).fetchone()
+        linked = (
+            con.execute(
+                "SELECT name FROM search_jobs WHERE profile_id=? AND user_id IS ? ORDER BY name",
+                (profile_id, user_id),
+            ).fetchall()
+            if has_search_jobs
+            else []
+        )
+        if linked:
+            names = ", ".join(item["name"] for item in linked)
+            raise ValueError(f"Profile is used by search jobs: {names}. Reassign or delete them first.")
         con.execute("DELETE FROM search_profiles WHERE id=? AND user_id IS ?", (profile_id, user_id))
 
 

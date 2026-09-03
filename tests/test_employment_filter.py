@@ -84,6 +84,25 @@ def test_mixed_full_and_part_time_profile_accepts_both_and_keeps_queries():
     assert assess_employment_fit(job("Qualitätsprüfer Teilzeit"), mixed)[0] is True
 
 
+def test_first_class_hours_and_availability_are_constraints_or_preferences():
+    profile = {
+        "name": "Quality technician",
+        "slug": "quality-technician",
+        "preferred_weekly_hours": 20,
+        "availability": "afternoon",
+        "keywords": {"format": {"Vollzeit": 16, "Teilzeit": 16}},
+    }
+    vacancy = job("Qualitätsprüfer", "Teilzeit, 30 Stunden pro Woche am Vormittag.")
+
+    strict = assess_employment_fit(vacancy, profile, strict=True)
+    preferred = assess_employment_fit(vacancy, profile, strict=False)
+
+    assert strict[0] is False
+    assert preferred[0] is True
+    assert any("exceeds preferred 20" in reason for reason in preferred[2])
+    assert "employment mismatch: afternoon availability not confirmed" in preferred[2]
+
+
 def test_mixed_hours_profile_does_not_admit_student_only_jobs_without_enrollment():
     mixed = {
         "name": "Quality engineering / Full-time and part-time",

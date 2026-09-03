@@ -1,12 +1,16 @@
 from app import db
 from app.models import Job
 from app.profile_store import (
+    delete_profile,
     ensure_profile_schema,
+    get_profile,
     get_job_for_profile,
     list_jobs_for_profile,
     list_profiles,
+    save_profile,
     upsert_profile_score,
 )
+from app.search_job_store import save_search_job
 from app.feedback_store import ensure_feedback_schema, record_feedback, apply_learned_penalty
 from app.positive_learning import record_positive_event, apply_positive_boost
 
@@ -45,6 +49,77 @@ def test_default_profiles_are_seeded(tmp_path, monkeypatch):
     assert profiles[0]["is_default"] is True
     assert any(p["slug"] == "werkstudent" for p in profiles)
     assert any(p["slug"] == "fulltime" for p in profiles)
+
+
+def test_profile_essentials_are_persisted_as_first_class_fields(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    profile_id = save_profile(
+        {
+            "name": "Technician quality",
+            "slug": "technician-quality",
+            "current_german_level": "a2",
+            "current_english_level": "c1",
+            "preferred_weekly_hours": 20,
+            "availability": "afternoon",
+            "role_level": "technician",
+        }
+    )
+
+    profile = get_profile(profile_id)
+
+    assert profile["current_english_level"] == "c1"
+    assert profile["preferred_weekly_hours"] == 20
+    assert profile["availability"] == "afternoon"
+    assert profile["role_level"] == "technician"
+
+
+def test_profile_essentials_migrate_in_place_and_import_legacy_english(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.settings, "database_path", str(tmp_path / "legacy-profile.db"))
+    db.init_db()
+    with db.connection() as con:
+        con.execute(
+            """CREATE TABLE search_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER,name TEXT NOT NULL,slug TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,is_default INTEGER NOT NULL DEFAULT 0,
+                target_location TEXT NOT NULL DEFAULT 'Berlin',location_terms_json TEXT NOT NULL DEFAULT '[]',
+                min_score INTEGER NOT NULL DEFAULT 35,min_language_score INTEGER NOT NULL DEFAULT 40,
+                language_weight INTEGER NOT NULL DEFAULT 35,current_german_level TEXT NOT NULL DEFAULT 'a2_b1',
+                max_german_requirement TEXT NOT NULL DEFAULT 'b1',show_b2_stretch INTEGER NOT NULL DEFAULT 1,
+                hide_german_heavy INTEGER NOT NULL DEFAULT 1,prefer_german_growth INTEGER NOT NULL DEFAULT 1,
+                content_languages_json TEXT NOT NULL DEFAULT '[\"de\",\"en\",\"mixed\"]',
+                keywords_json TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,
+                UNIQUE(user_id,name),UNIQUE(user_id,slug))"""
+        )
+        con.execute(
+            """INSERT INTO search_profiles
+               (user_id,name,slug,keywords_json,created_at,updated_at)
+               VALUES(NULL,'MBA student','mba-student','{"language":{"english_c1":0}}','now','now')"""
+        )
+
+    ensure_profile_schema()
+    profile = list_profiles()[0]
+
+    assert profile["current_english_level"] == "c1"
+    assert profile["preferred_weekly_hours"] is None
+    assert profile["availability"] == "any"
+    assert profile["role_level"] == "any"
+
+
+def test_profile_delete_explains_linked_search_jobs(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    profile_id = save_profile({"name": "Linked profile", "slug": "linked-profile"})
+    save_search_job({"name": "Berlin quality daily", "profile_id": profile_id})
+
+    try:
+        delete_profile(profile_id)
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("linked profile deletion should fail")
+
+    assert "Berlin quality daily" in message
+    assert "Reassign or delete" in message
+    assert get_profile(profile_id) is not None
 
 
 def test_same_job_keeps_independent_profile_scores(tmp_path, monkeypatch):

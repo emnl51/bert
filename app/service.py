@@ -107,7 +107,7 @@ async def run_search() -> dict:
                     continue
                 location_terms = profile.get("location_terms") or cfg["location_terms"]
                 job.score, job.reasons = score_job(job, keywords, location_terms)
-                role = assess_role_relevance(job, keywords)
+                role = assess_role_relevance(job, keywords, role_level=profile.get("role_level", "any"))
                 job.role_relevant = role.relevant
                 job.reasons.extend(reason for reason in role.reasons if reason not in job.reasons)
                 employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile, strict=False)

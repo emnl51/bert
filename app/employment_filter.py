@@ -193,6 +193,36 @@ def _weekly_hours(text: str) -> int | None:
     return min(values) if values else None
 
 
+def _schedule_preference_reasons(profile: dict, body: str, weekly_hours: int | None) -> list[str]:
+    reasons: list[str] = []
+    preferred_hours = profile.get("preferred_weekly_hours")
+    if preferred_hours:
+        preferred_hours = int(preferred_hours)
+        if weekly_hours is None:
+            reasons.append(f"employment mismatch: preferred {preferred_hours} hours/week not confirmed")
+        elif weekly_hours > preferred_hours + 4:
+            reasons.append(
+                f"employment mismatch: advertised {weekly_hours} hours/week exceeds preferred {preferred_hours}"
+            )
+        else:
+            reasons.append(f"schedule: {weekly_hours} hours/week fits preferred {preferred_hours}")
+    availability = str(profile.get("availability") or "any")
+    schedule_is_flexible = any(
+        contains_affirmed_phrase(body, signal)
+        for signal in ("flexible working hours", "flexible arbeitszeiten", "gleitzeit")
+    )
+    schedule_is_afternoon = AFTERNOON_TIME_PATTERN.search(body) or any(
+        contains_affirmed_phrase(body, signal) for signal in AFTERNOON_SIGNALS
+    )
+    if availability == "afternoon" and not schedule_is_afternoon:
+        reasons.append("employment mismatch: afternoon availability not confirmed")
+    elif availability == "flexible" and not schedule_is_flexible:
+        reasons.append("employment mismatch: flexible hours not confirmed")
+    elif availability in {"afternoon", "flexible"}:
+        reasons.append(f"schedule: {availability} availability confirmed")
+    return reasons
+
+
 def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple[bool, str, list[str]]:
     """Classify employment format, optionally enforcing it as a hard gate.
 
@@ -211,9 +241,6 @@ def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple
     # full-time/part-time preference selected on the profile.
     if student_only and not _profile_targets_students(profile):
         return False, "student_only", ["employment mismatch: enrolled student required"]
-    if targets_part_time == targets_full_time:
-        return True, "not_restricted", []
-
     part_time_terms = (
         tuple(dict.fromkeys((*configured, *PART_TIME_SIGNALS))) if targets_part_time else PART_TIME_SIGNALS
     )
@@ -231,9 +258,14 @@ def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple
         full_time = True
     if workload is not None and workload >= 90 and not part_time:
         full_time = True
+    preference_reasons = _schedule_preference_reasons(profile, body, weekly_hours)
+    preference_mismatch = any(reason.startswith("employment mismatch:") for reason in preference_reasons)
+    if targets_part_time == targets_full_time:
+        label = "schedule_preference" if preference_reasons else "not_restricted"
+        return ((not strict) if preference_mismatch else True), label, preference_reasons
 
     if targets_part_time and part_time:
-        reasons = ["employment: part-time/student confirmed"]
+        reasons = ["employment: part-time/student confirmed", *preference_reasons]
         if weekly_hours is not None:
             reasons.append(f"schedule: {weekly_hours} hours/week")
         if workload is not None:
@@ -242,7 +274,7 @@ def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple
             contains_affirmed_phrase(body, signal) for signal in AFTERNOON_SIGNALS
         ):
             reasons.append("schedule: afternoon/flexible")
-        return True, "part_time", reasons
+        return ((not strict) if preference_mismatch else True), "part_time", reasons
     if targets_part_time and full_time:
         reasons = ["employment mismatch: full-time"]
         return (not strict), "full_time", reasons
@@ -251,7 +283,8 @@ def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple
         return (not strict), "unclear", reasons
 
     if full_time:
-        return True, "full_time", ["employment: full-time confirmed"]
+        reasons = ["employment: full-time confirmed", *preference_reasons]
+        return ((not strict) if preference_mismatch else True), "full_time", reasons
     if part_time:
         reasons = ["employment mismatch: part-time/student"]
         return (not strict), "part_time", reasons

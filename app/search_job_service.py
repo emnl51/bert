@@ -201,6 +201,7 @@ async def run_search_job(search_job_id: int) -> dict:
                 keyword_rules,
                 search_terms,
                 restrict_to_intent=custom_role_intent,
+                role_level=profile.get("role_level", "any"),
             )
             job.role_relevant = role.relevant
             job.reasons.extend(reason for reason in role.reasons if reason not in job.reasons)

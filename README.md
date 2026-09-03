@@ -152,6 +152,20 @@ After signing in as the administrator:
 4. Configure personal Telegram or email notifications in the user workspace.
 5. Configure account-activation email under **Administration → System Email**.
 
+The Search Profile editor keeps the everyday choices in **Profile essentials**: target role level, role families,
+working arrangements, German and English ability, preferred weekly hours, availability, and provider-query
+languages. Saving automatically adds generated bilingual suggestions while preserving existing custom terms.
+Raw thresholds, exact query lists, allowlists, blocklists, and scoring JSON remain available under the collapsed
+**Advanced matching settings** section.
+
+Role level is an eligibility boundary rather than a score boost. A technician profile rejects engineering,
+management, and student-only titles; an engineering profile rejects technician-only and student titles; a working-
+student profile requires an explicit student-role signal. Weekly hours and availability act as labeled preferences
+for Search Jobs in preference mode and as exclusions in strict working-time mode.
+
+Profiles referenced by Search Jobs cannot be deleted. Bert reports the linked Search Job names so they can be
+reassigned or removed first; profile-specific scores are deleted only after those references are resolved.
+
 System email and job-notification email are separate. System email settings can be managed in the admin UI; the `SYSTEM_SMTP_*` values in `.env` remain available as fallback defaults.
 
 ## Candidate Profiles and CV Match

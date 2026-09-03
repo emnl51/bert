@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import asyncio
 import hashlib
-from typing import Any
+from typing import Any, Literal
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -171,8 +171,12 @@ class ProfilePayload(BaseModel):
     min_score: int = Field(35, ge=0, le=100)
     min_language_score: int = Field(40, ge=0, le=100)
     language_weight: int = Field(35, ge=0, le=100)
-    current_german_level: str = "a2_b1"
-    max_german_requirement: str = "b1"
+    current_german_level: Literal["a1", "a2", "a2_b1", "b1", "b2"] = "a2_b1"
+    current_english_level: Literal["a2", "b1", "b2", "c1", "c2"] = "b1"
+    max_german_requirement: Literal["a2", "b1", "b2"] = "b1"
+    preferred_weekly_hours: int | None = Field(None, ge=1, le=48)
+    availability: Literal["any", "afternoon", "flexible"] = "any"
+    role_level: Literal["any", "technician", "engineer", "student"] = "any"
     show_b2_stretch: bool = True
     hide_german_heavy: bool = True
     prefer_german_growth: bool = True
