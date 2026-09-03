@@ -10,7 +10,15 @@ from .positive_learning import apply_positive_boost, sync_application_events
 from .feedback_store import apply_learned_penalty
 from .profile_store import get_profile, upsert_profile_score
 from .providers import fetch_all_jobs
-from .ranker import assess_language_fit, blocklist_matches, calculate_overall_score, profile_english_level, score_job
+from .ranker import (
+    assess_language_fit,
+    assess_role_relevance,
+    blocklist_matches,
+    calculate_overall_score,
+    classify_match_tier,
+    profile_english_level,
+    score_job,
+)
 from .runtime import runtime_config
 from .search_job_store import (
     acquire_search_job_lock,
@@ -53,9 +61,9 @@ def _selected_sources(search_job: dict) -> list[dict]:
 
 
 def search_terms_for_job(search_job: dict, profile: dict) -> list[str]:
-    """Prefer isolated per-job queries and fall back to the scoring profile."""
+    """Expand isolated job queries without losing the scoring profile's role coverage."""
     configured = [str(term).strip() for term in (search_job.get("search_terms") or []) if str(term).strip()]
-    return list(dict.fromkeys(configured)) or search_terms_for_profile(profile)
+    return search_terms_for_profile(profile, configured if configured else None)
 
 
 def keyword_rules_for_job(search_job: dict, profile: dict) -> dict[str, dict[str, int]]:
@@ -114,6 +122,12 @@ def passes_candidate_threshold(analysis: dict | None, minimum: int) -> bool:
     return bool(analysis) and int(analysis.get("cv_match", 0)) >= max(0, min(100, int(minimum)))
 
 
+def has_sufficient_candidate_evidence(job) -> bool:
+    """Return whether a provider supplied enough vacancy text for a hard CV gate."""
+    description = normalize_text(getattr(job, "description", ""))
+    return len(description) >= 240 and len(description.split()) >= 35
+
+
 async def run_search_job(search_job_id: int) -> dict:
     search_job = get_search_job_any(search_job_id, mask_secrets=False)
     if not search_job:
@@ -125,7 +139,7 @@ async def run_search_job(search_job_id: int) -> dict:
     base_cfg = runtime_config(search_job.get("user_id"))
     provider_errors = []
     channels = []
-    filtered = {"blocklist": 0, "employment": 0, "fit": 0, "language": 0, "cv_match": 0}
+    filtered = {"blocklist": 0, "role": 0, "employment": 0, "fit": 0, "language": 0, "cv_match": 0}
     try:
         profile = get_profile(int(search_job["profile_id"]), user_id=search_job.get("user_id"))
         if not profile:
@@ -168,16 +182,31 @@ async def run_search_job(search_job_id: int) -> dict:
         )
         keyword_rules = keyword_rules_for_job(search_job, profile)
         min_cv_match = int(search_job.get("min_cv_match", 58))
+        strict_employment = search_job.get("employment_mode", "prefer") == "strict"
+        custom_role_intent = bool(search_job.get("search_terms"))
         for source_job in unique_jobs:
             job = deepcopy(source_job)
             if blocklist_matches(job, keyword_rules):
                 filtered["blocklist"] += 1
                 continue
-            job.score, job.reasons = score_job(job, keyword_rules, location_terms)
-            employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile)
-            if not employment_ok:
-                filtered["employment"] += 1
-                continue
+            job.score, job.reasons = score_job(
+                job,
+                keyword_rules,
+                location_terms,
+                search_terms,
+                restrict_to_intent=custom_role_intent,
+            )
+            role = assess_role_relevance(
+                job,
+                keyword_rules,
+                search_terms,
+                restrict_to_intent=custom_role_intent,
+            )
+            job.role_relevant = role.relevant
+            job.reasons.extend(reason for reason in role.reasons if reason not in job.reasons)
+            employment_ok, _employment_label, employment_reasons = assess_employment_fit(
+                job, profile, strict=strict_employment
+            )
             job.reasons.extend(employment_reasons)
             job.language_score, job.language_label, job.language_reasons = assess_language_fit(job, language_profile)
             job.score, neg = apply_learned_penalty(job, job.score, profile_id=profile["id"])
@@ -187,9 +216,23 @@ async def run_search_job(search_job_id: int) -> dict:
             job.overall_score = calculate_overall_score(job.score, job.language_score, profile["language_weight"])
             upsert_job(job)
             upsert_language_fit(job)
-            upsert_profile_score(job, profile["id"])
-            eligible = job.language_score >= min_lang and job.overall_score >= min_score
-            if job.overall_score < min_score:
+            if not role.relevant:
+                filtered["role"] += 1
+                job.match_tier = "excluded"
+                upsert_profile_score(job, profile["id"], role_relevant=False, match_tier="excluded")
+                continue
+
+            hard_employment_exclusion = not employment_ok and (strict_employment or _employment_label == "student_only")
+            if hard_employment_exclusion:
+                filtered["employment"] += 1
+                job.match_tier = "excluded"
+                upsert_profile_score(job, profile["id"], role_relevant=True, match_tier="excluded")
+                continue
+
+            eligible = employment_ok and job.language_score >= min_lang and job.overall_score >= min_score
+            if not employment_ok:
+                filtered["employment"] += 1
+            elif job.overall_score < min_score:
                 filtered["fit"] += 1
             elif job.language_score < min_lang:
                 filtered["language"] += 1
@@ -201,29 +244,49 @@ async def run_search_job(search_job_id: int) -> dict:
                 if eligible:
                     filtered["language"] += 1
                 eligible = False
+            cv_deferred = False
             if eligible and candidate:
-                try:
-                    # Ollama enrichment is synchronous; keep it off the scheduler/event loop.
-                    # The worker boundary remains `await asyncio.to_thread(analyze_job`.
-                    job.intelligence = await asyncio.to_thread(
-                        analyze_job,
-                        job.key,
-                        candidate["id"],
-                        search_job_id,
-                        False,
-                        search_job.get("user_id"),
-                    )
-                except Exception as exc:
-                    job.reasons.append(f"intelligence-error: {exc}")
-                if not passes_candidate_threshold(getattr(job, "intelligence", None), min_cv_match):
-                    filtered["cv_match"] += 1
-                    eligible = False
+                if not has_sufficient_candidate_evidence(job):
+                    cv_deferred = True
+                    job.reasons.append("cv match deferred: source description incomplete")
+                else:
+                    try:
+                        # Ollama enrichment is synchronous; keep it off the scheduler/event loop.
+                        # The worker boundary remains `await asyncio.to_thread(analyze_job`.
+                        job.intelligence = await asyncio.to_thread(
+                            analyze_job,
+                            job.key,
+                            candidate["id"],
+                            search_job_id,
+                            False,
+                            search_job.get("user_id"),
+                        )
+                    except Exception as exc:
+                        cv_deferred = True
+                        job.reasons.append(f"intelligence-error: {exc}")
+                        job.reasons.append("cv match deferred: analysis unavailable")
+                    if not cv_deferred and not getattr(job, "intelligence", None):
+                        cv_deferred = True
+                        job.reasons.append("cv match deferred: analysis unavailable")
+                    elif not cv_deferred and not passes_candidate_threshold(job.intelligence, min_cv_match):
+                        filtered["cv_match"] += 1
+                        eligible = False
+            job.match_tier = classify_match_tier(
+                role_relevant=True,
+                eligible=eligible,
+                overall_score=job.overall_score,
+                employment_constraint=any(reason.startswith("employment mismatch:") for reason in employment_reasons),
+                language_label=job.language_label,
+                evidence_constraint=cv_deferred,
+            )
+            upsert_profile_score(job, profile["id"], role_relevant=True, match_tier=job.match_tier)
             if eligible:
                 fresh_for_this_search = mark_search_job_seen(search_job_id, job.key)
                 if fresh_for_this_search:
                     matches.append(job)
         matches.sort(
             key=lambda j: (
+                {"strong": 2, "match": 1, "stretch": 0}.get(getattr(j, "match_tier", "match"), 0),
                 getattr(j, "intelligence", {}).get("cv_match", -1),
                 j.overall_score,
                 j.language_score,

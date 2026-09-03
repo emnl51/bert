@@ -1,7 +1,7 @@
 from app import intelligence as intel
 from app.models import Job
 from app.ranker import blocklist_matches, score_job
-from app.search_job_service import deduplicate_jobs, passes_candidate_threshold
+from app.search_job_service import deduplicate_jobs, has_sufficient_candidate_evidence, passes_candidate_threshold
 from app.text_match import contains_phrase, normalize_text
 
 
@@ -106,3 +106,20 @@ def test_candidate_threshold_is_inclusive_and_clamped():
     assert passes_candidate_threshold({"cv_match": 58}, 58)
     assert not passes_candidate_threshold({"cv_match": 57}, 58)
     assert not passes_candidate_threshold(None, 0)
+
+
+def test_hard_cv_gate_requires_a_complete_source_description():
+    short = vacancy("Quality Engineer", "Part-time role. English required.")
+    complete = vacancy(
+        "Quality Engineer",
+        " ".join(
+            [
+                "Own supplier and production quality using SPC, PFMEA, control plans, root cause analysis,",
+                "8D corrective actions, audits, KPI reporting, cross-functional improvement, and customer",
+                "complaint management across an automotive manufacturing operation in Berlin with English",
+                "as the working language and flexible part-time scheduling for the engineering team.",
+            ]
+        ),
+    )
+    assert has_sufficient_candidate_evidence(short) is False
+    assert has_sufficient_candidate_evidence(complete) is True

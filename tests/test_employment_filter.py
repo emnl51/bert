@@ -76,9 +76,31 @@ def test_mixed_full_and_part_time_profile_accepts_both_and_keeps_queries():
             "format": {"Vollzeit": 16, "Teilzeit": 16},
         },
     }
-    assert search_terms_for_profile(mixed) == ["Qualitätsprüfer Vollzeit", "Qualitätsprüfer Teilzeit"]
+    terms = search_terms_for_profile(mixed)
+    assert terms[0] == "qualitätsprüfer"
+    assert "Qualitätsprüfer Vollzeit" in terms
+    assert "Qualitätsprüfer Teilzeit" in terms
     assert assess_employment_fit(job("Qualitätsprüfer Vollzeit"), mixed)[0] is True
     assert assess_employment_fit(job("Qualitätsprüfer Teilzeit"), mixed)[0] is True
+
+
+def test_mixed_hours_profile_does_not_admit_student_only_jobs_without_enrollment():
+    mixed = {
+        "name": "Quality engineering / Full-time and part-time",
+        "slug": "quality-both",
+        "keywords": {"format": {"Vollzeit": 16, "Teilzeit": 16}},
+    }
+    result = assess_employment_fit(job("Werkstudent Quality Engineering"), mixed, strict=False)
+    assert result[0] is False
+    assert result[1] == "student_only"
+
+    body_only = assess_employment_fit(
+        job("Quality Engineering Assistant", "Employment type: working student; enrollment is required."),
+        mixed,
+        strict=False,
+    )
+    assert body_only[0] is False
+    assert body_only[1] == "student_only"
 
 
 def test_part_time_signal_wins_over_full_time_boilerplate():
@@ -114,11 +136,73 @@ ENGINEERING_PROFILE = {
 
 def test_engineering_profile_gets_its_own_bilingual_role_queries():
     terms = search_terms_for_profile(ENGINEERING_PROFILE)
-    assert terms[0] == "qualitätskontrolle teilzeit"
+    assert terms[0] == "qualitätskontrolle"
+    assert "quality engineer" in terms[:6]
     assert any("quality" in term and "part time" in term for term in terms)
-    assert any("arbeitsvorbereitung" in term or "produktionsplanung" in term for term in terms)
-    assert any("sachbearbeitung" in term for term in terms[:6])
+    assert any(
+        "arbeitsvorbereitung" in term or "produktionsplanung" in term or "produktionsplaner" in term for term in terms
+    )
+    assert any("technical" in term or "sachbearbeitung" in term for term in terms[:7])
     assert not any("werkstudent" in term or "supply chain" in term for term in terms)
+
+
+def test_preference_mode_keeps_full_time_role_as_a_visible_stretch():
+    vacancy = job("Process Engineer", "Employment type: full-time, 40 hours per week.")
+    strict = assess_employment_fit(vacancy, ENGINEERING_PROFILE, strict=True)
+    preferred = assess_employment_fit(vacancy, ENGINEERING_PROFILE, strict=False)
+    assert strict[0] is False
+    assert preferred[0] is True
+    assert preferred[1] == "full_time"
+    assert "employment mismatch: full-time" in preferred[2]
+
+
+def test_full_time_profile_can_prefer_or_strictly_require_its_working_arrangement():
+    profile = {
+        "name": "Industrial engineering / Full-time",
+        "slug": "industrial-full-time",
+        "keywords": {"format": {"full-time": 16, "vollzeit": 16}},
+    }
+    full_time = job("Process Engineer", "Employment type: full-time, 40 hours per week.")
+    part_time = job("Process Engineer Teilzeit", "20 Stunden pro Woche.")
+    assert assess_employment_fit(full_time, profile, strict=True)[:2] == (True, "full_time")
+    assert assess_employment_fit(part_time, profile, strict=True)[0] is False
+    preferred = assess_employment_fit(part_time, profile, strict=False)
+    assert preferred[0] is True
+    assert preferred[1] == "part_time"
+    assert "employment mismatch: part-time/student" in preferred[2]
+
+
+def test_first_provider_queries_cover_each_industrial_role_before_schedule_variants():
+    profile = {
+        "name": "Industrial engineering / Part-time",
+        "slug": "industrial-part-time",
+        "target_location": "Berlin",
+        "location_terms": ["berlin"],
+        "keywords": {
+            "search": {
+                "part time quality engineer berlin": 0,
+                "supplier quality engineer teilzeit berlin": 0,
+                "quality assurance engineer part time berlin": 0,
+                "teilzeit process engineer berlin": 0,
+                "lackieringenieur teilzeit berlin": 0,
+                "production planner part time berlin": 0,
+            },
+            "title": {
+                "process engineer": 35,
+                "quality engineer": 35,
+                "lackieringenieur": 32,
+                "production planner": 32,
+            },
+            "format": {"teilzeit": 12, "part time": 12},
+        },
+    }
+    terms = search_terms_for_profile(profile)
+    first_six = terms[:6]
+    assert "process engineer" in first_six
+    assert "quality engineer" in first_six
+    assert "lackieringenieur" in first_six
+    assert "production planner" in first_six
+    assert not any("part time" in term or "teilzeit" in term for term in first_six)
 
 
 def test_part_time_is_confirmed_from_weekly_hours_and_afternoon_schedule():

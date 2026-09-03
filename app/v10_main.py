@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 from fastapi import Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -61,6 +61,7 @@ class SearchJobPayload(BaseModel):
     interval_hours: int = Field(12, ge=1, le=168)
     min_score_override: int | None = Field(default=None, ge=0, le=100)
     min_language_score_override: int | None = Field(default=None, ge=0, le=100)
+    employment_mode: Literal["prefer", "strict"] = "prefer"
     min_cv_match: int = Field(default=58, ge=0, le=100)
     max_results: int = Field(20, ge=1, le=100)
     notify_telegram: bool = False

@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 from app import providers
 from app import jobspy_provider
@@ -75,3 +76,25 @@ def test_jobspy_site_failure_does_not_block_other_sites(monkeypatch):
     jobs = asyncio.run(jobspy_provider.fetch_jobspy(source, ["supply chain"], "Berlin"))
     assert len(jobs) == 2
     assert any(job.source.endswith("/ indeed") for job in jobs)
+
+
+def test_jobspy_starts_independent_board_workers_concurrently(monkeypatch):
+    linkedin_started = threading.Event()
+    indeed_started = threading.Event()
+
+    def fake_scrape(term, site, source, location):
+        if site == "linkedin":
+            linkedin_started.set()
+            assert indeed_started.wait(1), "Indeed was starved behind the LinkedIn worker"
+        if site == "indeed":
+            indeed_started.set()
+        return FakeFrame()
+
+    monkeypatch.setattr(jobspy_provider, "_scrape_one", fake_scrape)
+    source = {
+        "name": "JobSpy Multi-board",
+        "config": {"sites": ["linkedin", "indeed"], "max_search_terms": 1},
+    }
+    jobs = asyncio.run(jobspy_provider.fetch_jobspy(source, ["process engineer"], "Berlin"))
+    assert linkedin_started.is_set() and indeed_started.is_set()
+    assert len(jobs) == 2

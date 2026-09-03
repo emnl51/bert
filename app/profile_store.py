@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS job_profile_scores (
     job_score INTEGER NOT NULL DEFAULT 0,
     language_score INTEGER NOT NULL DEFAULT 55,
     overall_score INTEGER NOT NULL DEFAULT 0,
+    role_relevant INTEGER NOT NULL DEFAULT 0,
+    match_tier TEXT NOT NULL DEFAULT 'excluded',
     language_label TEXT NOT NULL DEFAULT 'unclear',
     reasons_json TEXT NOT NULL DEFAULT '[]',
     language_reasons_json TEXT NOT NULL DEFAULT '[]',
@@ -188,6 +190,38 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _backfill_role_relevance(con) -> None:
+    """Re-evaluate legacy profile scores once when the structural role gate is added."""
+    from .models import Job
+    from .ranker import assess_role_relevance
+
+    rows = con.execute(
+        """SELECT s.job_key,s.profile_id,j.source,j.title,j.company,j.location,j.url,j.description,
+                  j.created_at,j.remote,p.keywords_json
+           FROM job_profile_scores s
+           JOIN jobs j ON j.job_key=s.job_key
+           JOIN search_profiles p ON p.id=s.profile_id"""
+    ).fetchall()
+    for row in rows:
+        keywords = json.loads(row["keywords_json"] or "{}")
+        job = Job(
+            source=row["source"],
+            external_id=row["job_key"],
+            title=row["title"],
+            company=row["company"],
+            location=row["location"],
+            url=row["url"],
+            description=row["description"],
+            created_at=row["created_at"],
+            remote=bool(row["remote"]),
+        )
+        relevant = row["source"] == "Manual" or assess_role_relevance(job, keywords).relevant
+        con.execute(
+            "UPDATE job_profile_scores SET role_relevant=? WHERE job_key=? AND profile_id=?",
+            (int(relevant), row["job_key"], row["profile_id"]),
+        )
+
+
 def _migrate_profile_ownership(con) -> None:
     columns = {row[1] for row in con.execute("PRAGMA table_info(search_profiles)").fetchall()}
     if not columns or "user_id" in columns:
@@ -244,6 +278,18 @@ def ensure_profile_schema(user_id: int | None = None) -> None:
         if "content_languages_json" not in columns:
             con.execute(
                 'ALTER TABLE search_profiles ADD COLUMN content_languages_json TEXT NOT NULL DEFAULT \'["de","en","mixed"]\''
+            )
+        score_columns = {row[1] for row in con.execute("PRAGMA table_info(job_profile_scores)").fetchall()}
+        if "role_relevant" not in score_columns:
+            con.execute("ALTER TABLE job_profile_scores ADD COLUMN role_relevant INTEGER NOT NULL DEFAULT 0")
+            _backfill_role_relevance(con)
+        if "match_tier" not in score_columns:
+            con.execute("ALTER TABLE job_profile_scores ADD COLUMN match_tier TEXT NOT NULL DEFAULT 'excluded'")
+            con.execute(
+                """UPDATE job_profile_scores SET match_tier=CASE
+                   WHEN role_relevant=0 THEN 'excluded'
+                   WHEN overall_score>=75 THEN 'strong'
+                   ELSE 'match' END"""
             )
         for row in con.execute("SELECT id,keywords_json FROM search_profiles").fetchall():
             keywords = json.loads(row["keywords_json"] or "{}")
@@ -426,17 +472,30 @@ def delete_profile(profile_id: int, user_id: int | None = None) -> None:
         con.execute("DELETE FROM search_profiles WHERE id=? AND user_id IS ?", (profile_id, user_id))
 
 
-def upsert_profile_score(job, profile_id: int) -> None:
+def upsert_profile_score(
+    job,
+    profile_id: int,
+    role_relevant: bool | None = None,
+    match_tier: str | None = None,
+) -> None:
+    if role_relevant is None:
+        role_relevant = bool(getattr(job, "role_relevant", True))
+    if match_tier is None:
+        match_tier = str(getattr(job, "match_tier", "match" if role_relevant else "excluded"))
+    if match_tier not in ("strong", "match", "stretch", "excluded"):
+        match_tier = "match" if role_relevant else "excluded"
     with connection() as con:
         con.execute(
-            """INSERT INTO job_profile_scores(job_key,profile_id,job_score,language_score,overall_score,language_label,reasons_json,language_reasons_json,updated_at)
-                       VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(job_key,profile_id) DO UPDATE SET job_score=excluded.job_score,language_score=excluded.language_score,overall_score=excluded.overall_score,language_label=excluded.language_label,reasons_json=excluded.reasons_json,language_reasons_json=excluded.language_reasons_json,updated_at=excluded.updated_at""",
+            """INSERT INTO job_profile_scores(job_key,profile_id,job_score,language_score,overall_score,role_relevant,match_tier,language_label,reasons_json,language_reasons_json,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(job_key,profile_id) DO UPDATE SET job_score=excluded.job_score,language_score=excluded.language_score,overall_score=excluded.overall_score,role_relevant=excluded.role_relevant,match_tier=excluded.match_tier,language_label=excluded.language_label,reasons_json=excluded.reasons_json,language_reasons_json=excluded.language_reasons_json,updated_at=excluded.updated_at""",
             (
                 job.key,
                 profile_id,
                 job.score,
                 job.language_score,
                 job.overall_score,
+                int(role_relevant),
+                match_tier,
                 job.language_label,
                 json.dumps(job.reasons, ensure_ascii=False),
                 json.dumps(job.language_reasons, ensure_ascii=False),
@@ -459,6 +518,7 @@ def list_jobs_for_profile(
     decision: str = "active",
     language: str = "preferred",
     content_language: str = "profile",
+    tier: str = "all",
     user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     ensure_profile_schema(user_id)
@@ -466,7 +526,7 @@ def list_jobs_for_profile(
     if not profile:
         return []
     owner_key = "admin" if user_id is None else f"user:{int(user_id)}"
-    where = ["s.profile_id=?", "s.overall_score>=?"]
+    where = ["s.profile_id=?", "s.role_relevant=1", "s.match_tier!='excluded'", "s.overall_score>=?"]
     params: list[Any] = [profile_id, min_score]
     if decision == "active":
         where.append("COALESCE(js.decision,'unreviewed')!='skip'")
@@ -486,13 +546,16 @@ def list_jobs_for_profile(
     elif content_language in ("de", "en", "mixed", "unknown"):
         where.append("j.content_language=?")
         params.append(content_language)
+    if tier in ("strong", "match", "stretch"):
+        where.append("s.match_tier=?")
+        params.append(tier)
     params = [owner_key, owner_key, *params, limit]
     with connection() as con:
         rows = con.execute(
             f"""SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.description,j.created_at,j.first_seen,j.remote,
                                    COALESCE(js.decision,'unreviewed') AS decision,js.decision_at,
                                    j.content_language,j.content_language_confidence,j.content_language_source,
-                                   s.job_score AS score,s.language_score,s.overall_score,s.language_label,s.reasons_json,s.language_reasons_json,
+                                   s.job_score AS score,s.language_score,s.overall_score,s.role_relevant,s.match_tier,s.language_label,s.reasons_json,s.language_reasons_json,
                                    a.status AS application_status,a.applied_at
                             FROM job_profile_scores s JOIN jobs j ON j.job_key=s.job_key
                             LEFT JOIN user_job_state js ON js.owner_key=? AND js.job_key=j.job_key
@@ -509,6 +572,7 @@ def list_jobs_for_profile(
         item.update(classify_job_metadata(item))
         item.pop("description", None)
         item["remote"] = bool(item["remote"])
+        item["role_relevant"] = bool(item["role_relevant"])
         out.append(item)
     return out
 
@@ -525,13 +589,13 @@ def get_job_for_profile(job_key: str, profile_id: int, user_id: int | None = Non
                               j.first_seen,j.remote,j.content_language,j.content_language_confidence,
                               j.content_language_source,COALESCE(js.decision,'unreviewed') AS decision,
                               js.decision_at,s.job_score AS score,s.language_score,s.overall_score,
-                              s.language_label,s.reasons_json,s.language_reasons_json,
+                              s.role_relevant,s.match_tier,s.language_label,s.reasons_json,s.language_reasons_json,
                               a.status AS application_status,a.applied_at
                        FROM job_profile_scores s
                        JOIN jobs j ON j.job_key=s.job_key
                        LEFT JOIN user_job_state js ON js.owner_key=? AND js.job_key=j.job_key
                        LEFT JOIN applications a ON a.owner_key=? AND a.job_key=j.job_key
-                       WHERE s.profile_id=? AND j.job_key=?""",
+                       WHERE s.profile_id=? AND s.role_relevant=1 AND s.match_tier!='excluded' AND j.job_key=?""",
             (owner_key, owner_key, profile_id, job_key),
         ).fetchone()
     if not row:
@@ -541,4 +605,5 @@ def get_job_for_profile(job_key: str, profile_id: int, user_id: int | None = Non
     item["language_reasons"] = json.loads(item.pop("language_reasons_json") or "[]")
     item.update(classify_job_metadata(item))
     item["remote"] = bool(item["remote"])
+    item["role_relevant"] = bool(item["role_relevant"])
     return item

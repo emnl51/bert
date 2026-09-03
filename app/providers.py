@@ -364,17 +364,24 @@ async def _fetch_with_resilience(provider, source: dict, search_terms: list[str]
 async def fetch_all_jobs(
     sources: list[dict], search_terms: list[str], target_location: str
 ) -> tuple[list[Job], list[str]]:
-    jobs = []
-    errors = []
-    for source in sources:
+    async def fetch_source(source: dict) -> tuple[list[Job], str | None]:
         provider = PROVIDERS.get(source["source_type"])
         if not provider:
-            errors.append(f"{source['name']}: unsupported source type {source['source_type']}")
-            continue
+            return [], f"{source['name']}: unsupported source type {source['source_type']}"
         try:
-            jobs.extend(await _fetch_with_resilience(provider, source, search_terms, target_location))
+            return await _fetch_with_resilience(provider, source, search_terms, target_location), None
         except Exception as exc:
-            errors.append(f"{source['name']}: {_safe_provider_error(source, exc)}")
+            return [], f"{source['name']}: {_safe_provider_error(source, exc)}"
+
+    jobs = []
+    errors = []
+    # Sources are independent. Running them together prevents a slow experimental
+    # scraper from delaying stable API/feed results until the request or scheduler
+    # budget has already expired. asyncio.gather preserves configured source order.
+    for source_jobs, error in await asyncio.gather(*(fetch_source(source) for source in sources)):
+        jobs.extend(source_jobs)
+        if error:
+            errors.append(error)
     if errors and not jobs:
         raise RuntimeError("; ".join(errors))
     return jobs, errors

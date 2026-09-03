@@ -334,7 +334,7 @@ def stepstone_ui(_: str = Depends(require_admin)):
 class StepStonePayload(BaseModel):
     name: str = Field(default="StepStone Germany", min_length=1, max_length=100)
     enabled: bool = False
-    max_search_terms: int = Field(default=3, ge=1, le=10)
+    max_search_terms: int = Field(default=6, ge=1, le=10)
     pages_per_term: int = Field(default=1, ge=1, le=3)
     results_per_term: int = Field(default=25, ge=1, le=75)
     timeout_seconds: int = Field(default=30, ge=10, le=90)

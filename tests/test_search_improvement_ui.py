@@ -16,7 +16,8 @@ def test_review_cards_explain_role_schedule_language_and_strong_matches():
     assert "scheduleDetail" in text
     assert "job-insight language" in text
     assert "job-language-reasons" in text
-    assert "Strong profile match" in text
+    assert "Strong role match" in text
+    assert "constraint to review" in text
 
 
 def test_interface_offers_persistent_english_and_turkish_language_selection():

@@ -93,7 +93,9 @@ def test_search_terms_are_isolated_and_normalized_per_search_job(tmp_path, monke
     )
     saved = next(job for job in list_search_jobs() if job["id"] == job_id)
     assert saved["search_terms"] == ["teilzeit process engineer", "part time quality engineer"]
-    assert search_terms_for_job(saved, p) == saved["search_terms"]
+    planned = search_terms_for_job(saved, p)
+    assert planned[:2] == ["process engineer", "quality engineer"]
+    assert all(term in planned for term in saved["search_terms"])
     assert not any("werkstudent" in term for term in search_terms_for_job(saved, p))
 
 
@@ -134,6 +136,16 @@ def test_cv_match_threshold_is_saved_per_search_job(tmp_path, monkeypatch):
     search_id = save_search_job({"name": "Evidence gated", "profile_id": profile["id"], "min_cv_match": 72})
     saved = next(job for job in list_search_jobs() if job["id"] == search_id)
     assert saved["min_cv_match"] == 72
+
+
+def test_working_time_can_be_preferred_or_strict_per_search_job(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    profile = list_profiles()[0]
+    preferred_id = save_search_job({"name": "Broad discovery", "profile_id": profile["id"]})
+    strict_id = save_search_job({"name": "Part-time only", "profile_id": profile["id"], "employment_mode": "strict"})
+    jobs = {job["id"]: job for job in list_search_jobs()}
+    assert jobs[preferred_id]["employment_mode"] == "prefer"
+    assert jobs[strict_id]["employment_mode"] == "strict"
 
 
 def test_run_history_preserves_filter_reason_counts(tmp_path, monkeypatch):

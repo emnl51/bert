@@ -493,6 +493,7 @@ def api_jobs(
     decision: str = Query("active"),
     language: str = Query("preferred"),
     content_language: str = Query("profile"),
+    tier: str = Query("all"),
     profile_id: int | None = Query(None),
     actor: dict = Depends(require_workspace),
 ):
@@ -502,6 +503,8 @@ def api_jobs(
         raise HTTPException(400, "Invalid language filter")
     if content_language not in ("all", "profile", "de", "en", "mixed", "unknown"):
         raise HTTPException(400, "Invalid content language filter")
+    if tier not in ("all", "strong", "match", "stretch"):
+        raise HTTPException(400, "Invalid match tier filter")
     profile = get_profile(profile_id, user_id=actor["user_id"])
     if not profile:
         raise HTTPException(404, "Profile not found")
@@ -514,6 +517,7 @@ def api_jobs(
             None if decision == "all" else decision,
             language,
             content_language,
+            tier,
             user_id=actor["user_id"],
         ),
     }

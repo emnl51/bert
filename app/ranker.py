@@ -1,7 +1,14 @@
 import re
+from dataclasses import dataclass
 
 from .models import Job
-from .search_intent import matched_role_families, role_families_for_terms
+from .search_intent import (
+    CONFLICTING_TITLE_SIGNALS,
+    INDUSTRIAL_DOMAIN_SIGNALS,
+    PROFESSIONAL_TITLE_SIGNALS,
+    matched_role_families,
+    role_families_for_terms,
+)
 from .text_match import contains_affirmed_phrase, contains_phrase, normalize_text
 
 
@@ -24,39 +31,175 @@ def blocklist_matches(job: Job, keywords: dict[str, dict[str, int]]) -> list[str
     return matches
 
 
-def score_job(job: Job, keywords: dict[str, dict[str, int]], location_terms: list[str]) -> tuple[int, list[str]]:
+@dataclass(frozen=True)
+class RoleAssessment:
+    relevant: bool
+    confidence: str
+    requested_families: tuple[str, ...]
+    matched_families: tuple[str, ...]
+    reasons: tuple[str, ...]
+
+
+def classify_match_tier(
+    *,
+    role_relevant: bool,
+    eligible: bool,
+    overall_score: int,
+    employment_constraint: bool,
+    language_label: str,
+    evidence_constraint: bool = False,
+) -> str:
+    """Map independent matching decisions to a stable review label."""
+    if not role_relevant:
+        return "excluded"
+    has_constraint = (
+        employment_constraint
+        or evidence_constraint
+        or language_label
+        in (
+            "stretch",
+            "german_heavy",
+        )
+    )
+    if not eligible or has_constraint:
+        return "stretch"
+    return "strong" if overall_score >= 75 else "match"
+
+
+def _matching_terms(text: str, terms) -> list[str]:
+    matches: list[str] = []
+    for value in terms:
+        term = _normalise(str(value))
+        if term and contains_affirmed_phrase(text, term) and term not in matches:
+            matches.append(term)
+    return matches
+
+
+def assess_role_relevance(
+    job: Job,
+    keywords: dict,
+    intent_terms=(),
+    restrict_to_intent: bool = False,
+) -> RoleAssessment:
+    """Require occupational evidence before softer signals can influence ranking.
+
+    Location, language, work arrangement, and skills are useful ranking dimensions,
+    but none of them proves that a vacancy belongs to the requested occupation. Direct
+    title evidence is preferred; a generic professional title can fall back to strong
+    role-family evidence in the description.
+    """
+    title = _normalise(job.title)
+    body = _normalise(f"{job.title} {job.description}")
+    intent_terms = tuple(intent_terms)
+    title_rules = list((keywords.get("title") or {}).keys())
+    search_rules = list((keywords.get("search") or {}).keys())
+    role_scope = list(intent_terms) if restrict_to_intent else [*title_rules, *search_rules, *intent_terms]
+    title_evidence = list(intent_terms) if restrict_to_intent else [*title_rules, *search_rules, *intent_terms]
+    requested = role_families_for_terms(role_scope)
+    title_hits = _matching_terms(title, title_evidence)
+    title_families = matched_role_families(title, requested)
+    body_families = matched_role_families(body, requested)
+    professional_title = bool(_matching_terms(title, PROFESSIONAL_TITLE_SIGNALS))
+    conflict_hits = _matching_terms(title, CONFLICTING_TITLE_SIGNALS)
+    industrial_hits = _matching_terms(body, INDUSTRIAL_DOMAIN_SIGNALS)
+
+    reasons: list[str] = []
+    if title_hits:
+        reasons.append(f"role title evidence: {', '.join(title_hits[:3])}")
+    if title_families:
+        reasons.append(f"role family evidence: {', '.join(title_families)}")
+
+    # A title such as "Software Quality Engineer" contains a valid family phrase but
+    # belongs to a different occupational domain. Two independent industrial signals
+    # are enough to keep legitimate digital/manufacturing crossover roles.
+    conflict_explicitly_requested = any(
+        contains_affirmed_phrase(str(term), conflict) for term in role_scope for conflict in conflict_hits
+    )
+    if conflict_hits and not conflict_explicitly_requested and len(industrial_hits) < 2:
+        reasons.append(f"conflicting occupation: {', '.join(conflict_hits)}")
+        return RoleAssessment(False, "conflict", tuple(requested), tuple(title_families), tuple(reasons))
+
+    if title_hits or title_families:
+        return RoleAssessment(True, "direct", tuple(requested), tuple(title_families), tuple(reasons))
+
+    description_only = [family for family in body_families if family not in title_families]
+    industrial_scope = bool({"quality", "production", "planning", "process", "coating"}.intersection(requested))
+    if professional_title and description_only and (industrial_hits or not industrial_scope):
+        reasons.append(f"role description evidence: {', '.join(description_only)}")
+        return RoleAssessment(True, "supported", tuple(requested), tuple(description_only), tuple(reasons))
+
+    # Profiles created before role-title rules existed may intentionally be skill-only.
+    # Preserve their behaviour, but do not use this fallback when an occupation was
+    # explicitly configured and simply failed to match.
+    if not title_evidence and not requested:
+        reasons.append("role evidence: legacy skill-only profile")
+        return RoleAssessment(True, "legacy", (), (), tuple(reasons))
+
+    reasons.append("role evidence missing from title")
+    return RoleAssessment(False, "none", tuple(requested), (), tuple(reasons))
+
+
+def score_job(
+    job: Job,
+    keywords: dict[str, dict[str, int]],
+    location_terms: list[str],
+    intent_terms=(),
+    restrict_to_intent: bool = False,
+) -> tuple[int, list[str]]:
     """Return a 0-100 role/skill fit score, independent from language fit."""
     title = _normalise(job.title)
     body = _normalise(f"{job.title} {job.description}")
     location = _normalise(job.location)
+    intent_terms = tuple(intent_terms)
     score = 0
     reasons: list[str] = []
 
+    title_points = 0
     for term, weight in keywords.get("title", {}).items():
         if contains_affirmed_phrase(title, term):
-            score += weight
+            title_points += int(weight)
             reasons.append(f"title: {term}")
-    requested_families = role_families_for_terms((keywords.get("title") or {}).keys())
-    for family in matched_role_families(title, requested_families):
-        if not any(reason.startswith("title:") for reason in reasons):
-            score += 20
+    score += min(48, max(0, title_points))
+    role_scope = (
+        list(intent_terms)
+        if restrict_to_intent
+        else [*(keywords.get("title") or {}).keys(), *(keywords.get("search") or {}).keys(), *intent_terms]
+    )
+    requested_families = role_families_for_terms(role_scope)
+    family_matches = matched_role_families(title, requested_families)
+    if family_matches:
+        score += min(36, 28 + (len(family_matches) - 1) * 4)
+    for family in family_matches:
         reasons.append(f"role family: {family}")
+    query_evidence = (
+        list(intent_terms) if restrict_to_intent else [*(keywords.get("search") or {}).keys(), *intent_terms]
+    )
+    query_title_hits = _matching_terms(title, query_evidence)
+    if not title_points and not family_matches and query_title_hits:
+        score += 30
+        reasons.append(f"query role: {query_title_hits[0]}")
+    format_points = 0
     for term, weight in keywords.get("format", {}).items():
         if contains_affirmed_phrase(body, term):
-            score += weight
+            format_points += int(weight)
             reasons.append(f"format: {term}")
+    score += min(34, max(0, format_points))
+    skill_points = 0
     for term, weight in keywords.get("skill", {}).items():
         if contains_affirmed_phrase(body, term):
-            score += weight
+            skill_points += int(weight)
             if len(reasons) < 8:
                 reasons.append(f"skill: {term}")
+    score += min(28, max(0, skill_points))
+    allowlist_points = 0
     for value, weight in (keywords.get("allowlist") or {}).items():
         term = _normalise(str(value))
         boost = max(0, int(weight))
         if term and contains_affirmed_phrase(body, term) and boost:
-            score += boost
+            allowlist_points += boost
             if len(reasons) < 8:
                 reasons.append(f"allowlist: {term}")
+    score += min(30, allowlist_points)
     for term, penalty in keywords.get("negative", {}).items():
         if contains_affirmed_phrase(title, term):
             score += penalty

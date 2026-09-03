@@ -17,6 +17,8 @@ class Job:
     reasons: list[str] = field(default_factory=list)
     language_score: int = 55
     overall_score: int = 0
+    role_relevant: bool = True
+    match_tier: str = "match"
     language_label: str = "unclear"
     language_reasons: list[str] = field(default_factory=list)
 

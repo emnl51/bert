@@ -154,7 +154,7 @@ def parse_stepstone_search_html(html: str, source_name: str = "StepStone Germany
 
 async def fetch_stepstone(source: dict, search_terms: list[str], target_location: str) -> list[Job]:
     config = source.get("config") or {}
-    max_terms = max(1, min(int(config.get("max_search_terms", 3)), 10))
+    max_terms = max(1, min(int(config.get("max_search_terms", 6)), 10))
     pages_per_term = max(1, min(int(config.get("pages_per_term", 1)), 3))
     results_per_term = max(1, min(int(config.get("results_per_term", 25)), 75))
     timeout_seconds = max(10, min(int(config.get("timeout_seconds", 30)), 90))
