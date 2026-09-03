@@ -39,6 +39,18 @@
 - Version-stamps the UI shell asset so browsers load the current sidebar after an update.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 20.0.0
+
+### What's Changed
+* Redesign job search relevance and recall by @emnl51 in https://github.com/emnl51/bert/pull/80
+* Bump cryptography from 50.0.0 to 50.0.1 by @dependabot[bot] in https://github.com/emnl51/bert/pull/79
+* Bump ruff from 0.16.3 to 0.16.4 by @dependabot[bot] in https://github.com/emnl51/bert/pull/78
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/19.2.3...20.0.0
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/20.0.0)
+
 ## 19.0.0 — Application Workspace
 
 ### Added
