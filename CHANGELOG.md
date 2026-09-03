@@ -4,6 +4,8 @@
 
 ### Added
 
+- Adds first-class profile fields for target role level, English ability, preferred weekly hours, and availability.
+- Adds technician, engineering, and working-student role-level gates to prevent cross-seniority matches.
 - Adds a structural role-relevance gate so location, language, schedule, and skill points cannot admit an unrelated occupation.
 - Adds Strong, Match, Stretch, and Excluded result tiers plus a Match Tier filter in Job Review.
 - Adds per-Search Job preferred or strict working-time handling.
@@ -14,6 +16,9 @@
 
 ### Fixed
 
+- Prevents guided profile edits from silently replacing custom queries and role terms.
+- Preserves and reloads English level, weekly hours, and availability after a profile is saved.
+- Returns an actionable list of linked Search Jobs instead of a server error when a referenced profile is deleted.
 - Reclassifies legacy profile scores during migration and hides rows that were supported only by soft signals.
 - Keeps title-relevant vacancies with incomplete source descriptions instead of failing them on an unevaluable CV Match.
 - Prevents a slow or blocked JobSpy board from starving the other configured boards.
@@ -22,6 +27,8 @@
 
 ### Changed
 
+- Reorganizes Search Profile editing around a compact essentials form and keeps raw scoring controls collapsed under Advanced settings.
+- Applies pending guide changes automatically on save and shows profile language, hours, and target level on profile cards.
 - Plans broad, unqualified role queries before schedule-specific variants and distributes capped provider budgets across requested role families.
 - Runs independent sources concurrently while preserving deterministic source order.
 - Keeps strong full-time or working-time-unclear roles as labeled stretch results by default; strict exclusion remains selectable per Search Job.

@@ -40,6 +40,50 @@ class RoleAssessment:
     reasons: tuple[str, ...]
 
 
+ROLE_LEVEL_SIGNALS = {
+    "technician": (
+        "technician",
+        "techniker",
+        "qualitätsprüfer",
+        "qualitaetspruefer",
+        "prüftechniker",
+        "inspector",
+        "fachkraft",
+        "mitarbeiter qualität",
+        "mitarbeiter qualitaet",
+    ),
+    "engineer": ("engineer", "engineering", "ingenieur"),
+    "student": ("werkstudent", "working student", "student assistant", "studentische hilfskraft"),
+    "manager": ("manager", "teamleiter", "leiter", "head of", "director"),
+}
+
+
+def _role_level_conflict(title: str, role_level: str) -> str | None:
+    level = str(role_level or "any").lower()
+    if level == "any":
+        return None
+    hits = {
+        key: any(contains_phrase(title, signal) for signal in signals) for key, signals in ROLE_LEVEL_SIGNALS.items()
+    }
+    if level == "student" and not hits["student"]:
+        return "student role required"
+    if level == "technician":
+        if hits["student"]:
+            return "student role does not match technician level"
+        if hits["manager"]:
+            return "management role does not match technician level"
+        if hits["engineer"] and not hits["technician"]:
+            return "engineering role does not match technician level"
+    if level == "engineer":
+        if hits["student"]:
+            return "student role does not match engineering level"
+        if hits["manager"]:
+            return "management role does not match engineering level"
+        if hits["technician"] and not hits["engineer"]:
+            return "technician role does not match engineering level"
+    return None
+
+
 def classify_match_tier(
     *,
     role_relevant: bool,
@@ -80,6 +124,7 @@ def assess_role_relevance(
     keywords: dict,
     intent_terms=(),
     restrict_to_intent: bool = False,
+    role_level: str = "any",
 ) -> RoleAssessment:
     """Require occupational evidence before softer signals can influence ranking.
 
@@ -104,6 +149,10 @@ def assess_role_relevance(
     industrial_hits = _matching_terms(body, INDUSTRIAL_DOMAIN_SIGNALS)
 
     reasons: list[str] = []
+    level_conflict = _role_level_conflict(title, role_level)
+    if level_conflict:
+        reasons.append(f"role level conflict: {level_conflict}")
+        return RoleAssessment(False, "level_conflict", tuple(requested), tuple(title_families), tuple(reasons))
     if title_hits:
         reasons.append(f"role title evidence: {', '.join(title_hits[:3])}")
     if title_families:

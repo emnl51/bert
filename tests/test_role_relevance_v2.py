@@ -80,6 +80,29 @@ def test_software_quality_title_is_rejected_without_industrial_domain_evidence()
     assert assessment.confidence == "conflict"
 
 
+def test_technician_profile_rejects_engineering_and_management_titles():
+    technician_keywords = {
+        **KEYWORDS,
+        "title": {"quality technician": 35, "quality engineer": 35, "qualitätsprüfer": 35},
+    }
+    technician = vacancy("technician", "Quality Technician", "Inspect manufactured components.")
+    engineer = vacancy("engineer-level", "Quality Engineer", "Quality systems in manufacturing.")
+    manager = vacancy("manager-level", "Quality Manager", "Lead the plant quality department.")
+
+    assert assess_role_relevance(technician, technician_keywords, role_level="technician").relevant is True
+    assert assess_role_relevance(engineer, technician_keywords, role_level="technician").confidence == "level_conflict"
+    assert assess_role_relevance(manager, technician_keywords, role_level="technician").confidence == "level_conflict"
+
+
+def test_student_profile_requires_student_title_signal():
+    student = vacancy("student", "Working Student Supply Chain", "Support procurement operations.")
+    professional = vacancy("professional", "Supply Chain Specialist", "Manage procurement operations.")
+    keywords = {**KEYWORDS, "title": {"working student supply chain": 35, "supply chain specialist": 35}}
+
+    assert assess_role_relevance(student, keywords, role_level="student").relevant is True
+    assert assess_role_relevance(professional, keywords, role_level="student").confidence == "level_conflict"
+
+
 def test_generic_production_and_hr_jobs_cannot_be_rescued_by_soft_signals():
     production_worker = vacancy(
         "worker",
