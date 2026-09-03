@@ -32,6 +32,7 @@ _CATEGORY_LABELS = {
     "production": "Production",
     "planning": "Planning",
     "process": "Process engineering",
+    "coating": "Paint / coating",
     "technical office": "Technical office",
     "procurement": "Procurement",
     "logistics": "Logistics",
@@ -98,6 +99,8 @@ def classify_job_metadata(job: dict, today: date | None = None) -> dict:
     text = f"{title} {description}"
     families = matched_role_families(text, list(ROLE_FAMILIES))
     categories = [_CATEGORY_LABELS[family] for family in families]
+    if re.search(r"(?i)\b(production|produktion|fertigung|manufacturing)\b", text) and "Production" not in categories:
+        categories.append("Production")
 
     if _STUDENT_RE.search(text):
         employment_type, employment_label = "working_student", "Working student"

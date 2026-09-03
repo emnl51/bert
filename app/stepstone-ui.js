@@ -12,7 +12,7 @@
       const cfg = existing?.config || {};
       const name = prompt('Display name', existing?.name || 'StepStone Germany');
       if(name === null) return;
-      const maxTerms = numberPrompt('Maximum search terms per run (1-10)', cfg.max_search_terms || 3, 1, 10);
+      const maxTerms = numberPrompt('Maximum search terms per run (1-10)', cfg.max_search_terms || 6, 1, 10);
       if(maxTerms === null) return;
       const pages = numberPrompt('Pages per search term (1-3)', cfg.pages_per_term || 1, 1, 3);
       if(pages === null) return;

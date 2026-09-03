@@ -1,7 +1,7 @@
 import re
 
 from .models import Job
-from .search_intent import ROLE_FAMILIES, role_families_for_terms
+from .search_intent import ROLE_FAMILIES, ROLE_QUERY_TERMS, role_families_for_terms
 from .text_match import contains_affirmed_phrase
 
 
@@ -42,7 +42,13 @@ FULL_TIME_SIGNALS = (
     "full_time",
 )
 
-STUDENT_SIGNALS = ("werkstudent", "working student", "student assistant", "studentische aushilfe")
+STUDENT_SIGNALS = (
+    "werkstudent",
+    "working student",
+    "student assistant",
+    "studentische aushilfe",
+    "studentische hilfskraft",
+)
 HOURS_PATTERN = re.compile(
     r"(?<!\d)(?P<low>\d{1,2})(?:\s*(?:-|–|bis|to)\s*(?P<high>\d{1,2}))?"
     r"\s*(?:stunden|std\.?|hours?|h|wochenstunden)"
@@ -95,24 +101,41 @@ def profile_targets_full_time(profile: dict) -> bool:
     return any(term in FULL_TIME_SIGNALS for term in format_terms)
 
 
-def search_terms_for_profile(profile: dict) -> list[str]:
-    """Return profile-specific provider queries without mixing other enabled profiles.
+QUERY_ARRANGEMENT_PATTERN = re.compile(
+    r"(?i)\b(?:werkstudent\w*|working student|student assistant|studentische(?:r|n)? \w+|"
+    r"teilzeit|part[ -]?time|full[ -]?time|vollzeit|minijob|mini-job|geringf(?:ü|ue)gig\w*)\b"
+)
 
-    The built-in Werkstudent/Part-time profile gets diversified broad queries first so
-    low JobSpy max_search_terms values still cover student, part-time and minijob work.
-    User-configured queries remain included afterwards.
+
+def _base_provider_query(value: str, profile: dict) -> str:
+    """Remove scheduling/location constraints that unnecessarily narrow discovery."""
+    query = QUERY_ARRANGEMENT_PATTERN.sub(" ", _norm(value))
+    locations = [profile.get("target_location", ""), *(profile.get("location_terms") or [])]
+    for location in sorted({_norm(x) for x in locations if _norm(x)}, key=len, reverse=True):
+        query = re.sub(rf"(?<!\w){re.escape(location)}(?!\w)", " ", query)
+    return re.sub(r"\s+", " ", query).strip(" ,-/")
+
+
+def search_terms_for_profile(profile: dict, configured_terms: list[str] | None = None) -> list[str]:
+    """Plan balanced provider queries for one profile.
+
+    Unqualified role queries are intentionally placed before schedule-specific variants.
+    Providers such as JobSpy and StepStone cap the number of phrases they execute; the
+    previous ordering spent that budget on several part-time spellings of the first role
+    and never searched later role families.
     """
     keywords = profile.get("keywords") or {}
-    configured = [str(term).strip() for term in (keywords.get("search") or {}) if str(term).strip()]
-    # Mixed profiles intentionally accept both arrangements. Their configured
-    # provider phrases must not be rewritten into part-time-only searches.
-    if not profile_targets_part_time(profile) or profile_targets_full_time(profile):
-        return list(dict.fromkeys(configured or list((keywords.get("title") or {}).keys())))
-
+    raw_configured = configured_terms if configured_terms is not None else list((keywords.get("search") or {}).keys())
+    configured = [str(term).strip() for term in raw_configured if str(term).strip()]
     title_terms = list((keywords.get("title") or {}).keys())
-    requested_families = role_families_for_terms([*title_terms, *configured])
+    intent_terms = configured if configured_terms is not None else [*title_terms, *configured]
+    requested_families = role_families_for_terms(intent_terms)
     student_targeted = _profile_targets_students(profile)
-    if student_targeted and requested_families in ([], ["logistics"], ["procurement", "logistics"]):
+    if (
+        student_targeted
+        and not profile_targets_full_time(profile)
+        and requested_families in ([], ["logistics"], ["procurement", "logistics"])
+    ):
         priority = [
             "werkstudent supply chain",
             "part time supply chain",
@@ -123,31 +146,39 @@ def search_terms_for_profile(profile: dict) -> list[str]:
         ]
         return list(dict.fromkeys([*priority, *configured]))
 
-    generated = list(configured)
-    query_batches = []
-    preferred_german_roles = {
-        "quality": "qualitätskontrolle",
-        "production": "produktionsassistenz",
-        "planning": "arbeitsvorbereitung",
-        "process": "prozessoptimierung",
-        "technical office": "technische sachbearbeitung",
-        "procurement": "einkauf",
-        "logistics": "logistik",
-    }
+    base_configured = list(
+        dict.fromkeys(term for value in configured if (term := _base_provider_query(value, profile)))
+    )
+    generated: list[str] = []
+    covered_families: set[str] = set()
+
+    # Keep the first configured phrase for each family and every unknown/custom role.
+    # Repeated synonyms from one family move behind this coverage pass instead of
+    # consuming the provider's complete query budget.
+    for query in base_configured:
+        families = role_families_for_terms([query])
+        if not families or any(family not in covered_families for family in families):
+            generated.append(query)
+            covered_families.update(families)
     for family in requested_families:
-        aliases = ROLE_FAMILIES[family]
-        english = next((alias for alias in aliases if alias.isascii() and " " in alias), aliases[0])
-        german = preferred_german_roles.get(family) or next((alias for alias in aliases if not alias.isascii()), "")
-        queries = [f"{german or english} teilzeit", f"{english} part time"]
-        if german:
-            queries.append(f"{german} minijob")
-        if student_targeted:
-            queries.append(f"werkstudent {german or english}")
-        query_batches.append(queries)
-    for index in range(max((len(batch) for batch in query_batches), default=0)):
-        generated.extend(batch[index] for batch in query_batches if index < len(batch))
+        if family not in covered_families:
+            generated.append(ROLE_QUERY_TERMS.get(family, ROLE_FAMILIES[family][:2])[0])
+            covered_families.add(family)
+
+    # Add the other language, then any remaining user phrases, before narrower
+    # part-time variants. This preserves user intent without starving later roles.
+    for family in requested_families:
+        for query in ROLE_QUERY_TERMS.get(family, ROLE_FAMILIES[family][:2]):
+            if query not in generated:
+                generated.append(query)
+    generated.extend(base_configured)
+    generated.extend(configured)
+    if profile_targets_part_time(profile) and not profile_targets_full_time(profile):
+        for family in requested_families:
+            english, german = ROLE_QUERY_TERMS.get(family, ROLE_FAMILIES[family][:2])
+            generated.extend((f"{german} teilzeit", f"{english} part time", f"{german} minijob"))
     if not generated:
-        generated.extend(f"{term} teilzeit" for term in title_terms)
+        generated.extend(title_terms)
     return list(dict.fromkeys(generated))
 
 
@@ -162,42 +193,46 @@ def _weekly_hours(text: str) -> int | None:
     return min(values) if values else None
 
 
-def assess_employment_fit(job: Job, profile: dict) -> tuple[bool, str, list[str]]:
-    """Hard employment-format gate for profiles that explicitly target part-time work.
+def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple[bool, str, list[str]]:
+    """Classify employment format, optionally enforcing it as a hard gate.
 
     A positive part-time/student signal wins over generic full-time boilerplate. For a
-    strict part-time profile, explicit full-time jobs and jobs with no confirmable target
-    format are not recommended. Other profiles keep the previous permissive behaviour.
+    strict part-time search, explicit full-time jobs and jobs with no confirmable target
+    format are rejected. In preference mode they remain visible as stretch results.
     """
-    if not profile_targets_part_time(profile) or profile_targets_full_time(profile):
-        return True, "not_restricted", []
-
+    targets_part_time = profile_targets_part_time(profile)
+    targets_full_time = profile_targets_full_time(profile)
     title = _norm(job.title)
     body = _norm(f"{job.title} {job.description}")
     configured = _profile_format_terms(profile)
+    student_only = any(contains_affirmed_phrase(body, term) for term in STUDENT_SIGNALS)
 
-    positive_terms = tuple(dict.fromkeys((*configured, *PART_TIME_SIGNALS)))
-    positive_title = any(contains_affirmed_phrase(title, term) for term in positive_terms)
-    positive_body = positive_title or any(contains_affirmed_phrase(body, term) for term in positive_terms)
+    # Student vacancies are a genuine eligibility constraint, independent of the
+    # full-time/part-time preference selected on the profile.
+    if student_only and not _profile_targets_students(profile):
+        return False, "student_only", ["employment mismatch: enrolled student required"]
+    if targets_part_time == targets_full_time:
+        return True, "not_restricted", []
+
+    part_time_terms = (
+        tuple(dict.fromkeys((*configured, *PART_TIME_SIGNALS))) if targets_part_time else PART_TIME_SIGNALS
+    )
+    part_time_title = any(contains_affirmed_phrase(title, term) for term in part_time_terms)
+    part_time = part_time_title or any(contains_affirmed_phrase(body, term) for term in part_time_terms)
     full_time = any(contains_affirmed_phrase(body, term) for term in FULL_TIME_SIGNALS)
     weekly_hours = _weekly_hours(body)
     workload_match = WORKLOAD_PATTERN.search(body)
     workload = int(workload_match.group(1) or workload_match.group(2)) if workload_match else None
-    student_only = any(contains_affirmed_phrase(title, term) for term in STUDENT_SIGNALS)
-
-    if student_only and not _profile_targets_students(profile):
-        return False, "student_only", ["employment mismatch: enrolled student required"]
-
     if weekly_hours is not None and weekly_hours <= 32:
-        positive_body = True
+        part_time = True
     if workload is not None and workload <= 80:
-        positive_body = True
-    if weekly_hours is not None and weekly_hours >= 35 and not positive_body:
+        part_time = True
+    if weekly_hours is not None and weekly_hours >= 35 and not part_time:
         full_time = True
-    if workload is not None and workload >= 90 and not positive_body:
+    if workload is not None and workload >= 90 and not part_time:
         full_time = True
 
-    if positive_body:
+    if targets_part_time and part_time:
         reasons = ["employment: part-time/student confirmed"]
         if weekly_hours is not None:
             reasons.append(f"schedule: {weekly_hours} hours/week")
@@ -208,6 +243,16 @@ def assess_employment_fit(job: Job, profile: dict) -> tuple[bool, str, list[str]
         ):
             reasons.append("schedule: afternoon/flexible")
         return True, "part_time", reasons
+    if targets_part_time and full_time:
+        reasons = ["employment mismatch: full-time"]
+        return (not strict), "full_time", reasons
+    if targets_part_time:
+        reasons = ["employment mismatch: part-time/minijob not confirmed"]
+        return (not strict), "unclear", reasons
+
     if full_time:
-        return False, "full_time", ["employment mismatch: full-time"]
-    return False, "unclear", ["employment mismatch: part-time/minijob not confirmed"]
+        return True, "full_time", ["employment: full-time confirmed"]
+    if part_time:
+        reasons = ["employment mismatch: part-time/student"]
+        return (not strict), "part_time", reasons
+    return (not strict), "unclear", ["employment mismatch: full-time not confirmed"]

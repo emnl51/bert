@@ -23,6 +23,7 @@ def build_text_digest(jobs: list[Job], title: str = "JobTrack") -> str:
                 f"{i}. {job.title}",
                 f"   {job.company} | {job.location}",
                 f"   Overall {job.overall_score}/100 | Job {job.score}/100 | Language {job.language_score}/100",
+                f"   Match tier: {str(getattr(job, 'match_tier', 'match')).title()}",
                 f"   Language: {LABELS.get(job.language_label, job.language_label)}",
             ]
         )

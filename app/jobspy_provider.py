@@ -69,16 +69,16 @@ async def fetch_jobspy(source: dict, search_terms: list[str], target_location: s
     if not terms:
         raise RuntimeError("JobSpy requires at least one profile-specific search phrase")
 
-    jobs = []
-    seen = set()
-    failures = []
     loop = asyncio.get_running_loop()
     started = loop.time()
-    for term in terms:
-        for site in sites:
+
+    async def scrape_site(site: str):
+        site_jobs = []
+        site_failures = []
+        for term in terms:
             remaining = total_timeout_seconds - (loop.time() - started)
             if remaining <= 0:
-                failures.append(f"provider total timeout after {total_timeout_seconds}s")
+                site_failures.append(f"{site}: provider total timeout after {total_timeout_seconds}s")
                 log.warning("JobSpy total provider timeout reached after %ss", total_timeout_seconds)
                 break
             call_timeout = max(1, min(timeout_seconds, int(remaining)))
@@ -87,11 +87,11 @@ async def fetch_jobspy(source: dict, search_terms: list[str], target_location: s
                     asyncio.to_thread(_scrape_one, term, site, source, target_location), timeout=call_timeout
                 )
             except TimeoutError:
-                failures.append(f"{site}: timeout after {call_timeout}s")
+                site_failures.append(f"{site}: timeout after {call_timeout}s")
                 log.warning("JobSpy %s timed out after %ss for query %r", site, call_timeout, term)
                 continue
             except Exception as exc:
-                failures.append(f"{site}: {type(exc).__name__}")
+                site_failures.append(f"{site}: {type(exc).__name__}")
                 log.warning("JobSpy %s failed for query %r: %s", site, term, type(exc).__name__)
                 continue
             if frame is None or getattr(frame, "empty", False):
@@ -122,11 +122,7 @@ async def fetch_jobspy(source: dict, search_terms: list[str], target_location: s
                     description = "\n".join([*metadata, description])
                 created = _date_text(row.get("date_posted"))
                 external_id = _text(row.get("id")) or _stable_id(row_site, title, company, url)
-                dedupe = f"{row_site}:{external_id}"
-                if dedupe in seen:
-                    continue
-                seen.add(dedupe)
-                jobs.append(
+                site_jobs.append(
                     Job(
                         source=f"{source['name']} / {row_site}",
                         external_id=external_id,
@@ -139,8 +135,22 @@ async def fetch_jobspy(source: dict, search_terms: list[str], target_location: s
                         remote=bool(row.get("is_remote", False)),
                     )
                 )
-        if loop.time() - started >= total_timeout_seconds:
-            break
+        return site_jobs, site_failures
+
+    # One sequential worker per board avoids request bursts while ensuring a slow or
+    # blocked board cannot consume the complete provider budget before the others run.
+    results = await asyncio.gather(*(scrape_site(site) for site in sites))
+    jobs = []
+    failures = []
+    seen = set()
+    for site_jobs, site_failures in results:
+        failures.extend(site_failures)
+        for job in site_jobs:
+            dedupe = job.key
+            if dedupe in seen:
+                continue
+            seen.add(dedupe)
+            jobs.append(job)
     if failures and not jobs:
         raise RuntimeError("JobSpy returned no jobs; " + ", ".join(dict.fromkeys(failures)))
     return jobs

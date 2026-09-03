@@ -9,7 +9,8 @@ It supports separate user workspaces, scheduled searches, profile-specific rules
 - Search Profiles and independently scheduled Search Jobs
 - Job Fit, Language Fit, Overall Fit, and evidence-based CV Match
 - German, English, mixed, and unknown job-ad language detection
-- Strict employment-format filtering for full-time, part-time, Werkstudent, and Minijob searches
+- Per-search preferred or strict working-time handling for full-time, part-time, Werkstudent, and Minijob searches
+- Bilingual role-first query planning, structural role relevance, and Strong / Match / Stretch result tiers
 - Candidate Profiles with encrypted CV text
 - Optional local Ollama context for CV analysis
 - Application workspace with Kanban/list views, follow-up dates, contacts, activity history, and source conversion
@@ -39,6 +40,37 @@ Experimental integrations:
 - Kleinanzeigen Jobs
 
 Experimental sources can be affected by rate limits, anti-bot controls, or upstream page changes. Bert does not bypass CAPTCHAs or other access controls.
+
+## Search matching
+
+Bert treats provider search results as discovery candidates, not as confirmed matches. Each vacancy passes through
+separate stages so a high language, location, or skill score cannot rescue an unrelated occupation:
+
+1. **Query planning** removes location and working-time constraints from base role queries, distributes the first
+   provider queries across requested role families, and adds English/German variants before narrower schedule variants.
+   Custom Search Job queries remain isolated from the profile's other provider queries.
+2. **Role relevance** requires a requested phrase or role family in the title. A generic professional title such as
+   `Engineer II` is accepted only when its description supplies both role-family and industrial-domain evidence.
+   Conflicting software/data occupations are rejected unless supported by multiple manufacturing signals.
+3. **Independent dimensions** rank Job Fit, Language Fit, working-time fit, learned preferences, and optional CV Match.
+4. **Result tiers** expose `Strong`, `Match`, and `Stretch` vacancies in Job Review. Rows without structural role
+   evidence—or rows that fail an explicitly strict eligibility rule—are marked excluded and are not shown, even when
+   their old Overall Fit would have crossed the threshold.
+
+The CV Match threshold becomes a hard gate only when the provider supplied a sufficiently complete description.
+Title-relevant vacancies with a short card/snippet remain visible as `Stretch` with a deferred-CV explanation instead
+of being rejected for evidence the source did not provide.
+
+Search Jobs default to **Prefer profile hours; keep stretch roles**. This keeps a strong technical vacancy visible when
+it is full-time or its hours are missing, while labeling the constraint for review; it can still be notified when the
+other configured thresholds pass. Select **Strictly exclude other/unknown hours** when the working arrangement is a
+hard requirement; those vacancies are excluded from that Search Job's review queue and notifications. Student-only
+vacancies are always excluded unless the profile explicitly targets enrolled-student work.
+
+During the database migration, existing profile scores are re-evaluated by the role gate. Run each Search Job once
+after updating to fetch fresh source data and populate the new match tiers. For a profile with four target role
+families, six provider queries cover every base role plus two translated variants; use eight when provider capacity
+permits to cover both English and German for all four families.
 
 ## Quick start
 

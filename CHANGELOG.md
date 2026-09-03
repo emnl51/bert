@@ -4,16 +4,27 @@
 
 ### Added
 
+- Adds a structural role-relevance gate so location, language, schedule, and skill points cannot admit an unrelated occupation.
+- Adds Strong, Match, Stretch, and Excluded result tiers plus a Match Tier filter in Job Review.
+- Adds per-Search Job preferred or strict working-time handling.
+- Adds paint/coating, industrialization, supplier-quality, manufacturing-engineering, and production-planning aliases in English and German.
 - Adds a persistent Light, Dark, and System theme selector to the main workspace and sign-in screen.
 - Adds a focused job-detail dialog with the complete description, fit evidence, work schedule, source, date, and original-listing link.
 - Adds an idempotent release workflow that turns published GitHub Release notes into an automated changelog pull request.
 
 ### Fixed
 
+- Reclassifies legacy profile scores during migration and hides rows that were supported only by soft signals.
+- Keeps title-relevant vacancies with incomplete source descriptions instead of failing them on an unevaluable CV Match.
+- Prevents a slow or blocked JobSpy board from starving the other configured boards.
+- Prevents one slow experimental provider from delaying all stable API and feed sources.
 - Prevents the sidebar shell from stopping before the rebuilt navigation is mounted.
 
 ### Changed
 
+- Plans broad, unqualified role queries before schedule-specific variants and distributes capped provider budgets across requested role families.
+- Runs independent sources concurrently while preserving deterministic source order.
+- Keeps strong full-time or working-time-unclear roles as labeled stretch results by default; strict exclusion remains selectable per Search Job.
 - Aligns the workspace with Fredy’s compact visual system: a 220/60 px sidebar, neutral surfaces, restrained shadows, tighter radii, and denser navigation.
 - Moves Settings and Administration subpages into contextual content tabs while keeping their sidebar entries singular.
 

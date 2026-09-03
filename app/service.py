@@ -9,7 +9,15 @@ from .notifier import send_email, send_telegram
 from .language_store import upsert_language_fit
 from .profile_store import ensure_profile_schema, list_profiles, upsert_profile_score
 from .providers import fetch_all_jobs
-from .ranker import assess_language_fit, blocklist_matches, calculate_overall_score, profile_english_level, score_job
+from .ranker import (
+    assess_language_fit,
+    assess_role_relevance,
+    blocklist_matches,
+    calculate_overall_score,
+    classify_match_tier,
+    profile_english_level,
+    score_job,
+)
 from .runtime import runtime_config
 from .source_analytics import ensure_source_analytics_schema, save_source_run_stats
 
@@ -87,13 +95,7 @@ async def run_search() -> dict:
         profile_match_counts = {p["id"]: 0 for p in profiles}
 
         for raw_job in fetched:
-            # Do not persist obvious full-time or employment-unclear contamination in a
-            # strict part-time default run. This keeps both the review queue and the raw
-            # Stored jobs metric clean after a reset/re-index.
-            default_employment_ok, _default_employment_label, _default_employment_reasons = assess_employment_fit(
-                raw_job, default_profile
-            )
-            if not default_employment_ok or blocklist_matches(raw_job, default_profile.get("keywords") or {}):
+            if blocklist_matches(raw_job, default_profile.get("keywords") or {}):
                 continue
 
             is_new = None
@@ -105,7 +107,10 @@ async def run_search() -> dict:
                     continue
                 location_terms = profile.get("location_terms") or cfg["location_terms"]
                 job.score, job.reasons = score_job(job, keywords, location_terms)
-                employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile)
+                role = assess_role_relevance(job, keywords)
+                job.role_relevant = role.relevant
+                job.reasons.extend(reason for reason in role.reasons if reason not in job.reasons)
+                employment_ok, _employment_label, employment_reasons = assess_employment_fit(job, profile, strict=False)
                 job.reasons.extend(employment_reasons)
 
                 language_profile = {
@@ -126,26 +131,20 @@ async def run_search() -> dict:
                 if positive_reasons:
                     job.reasons.extend(positive_reasons)
 
-                if not employment_ok:
-                    job.score = 0
-                    job.overall_score = 0
-                else:
-                    job.overall_score = calculate_overall_score(
-                        job.score, job.language_score, profile.get("language_weight", 35)
-                    )
+                job.overall_score = calculate_overall_score(
+                    job.score, job.language_score, profile.get("language_weight", 35)
+                )
 
                 if profile["id"] == default_profile["id"]:
                     is_new = upsert_job(job)
                     upsert_language_fit(job)
                     default_scored = job
-                    if job.score >= int(profile.get("min_score", 35)):
+                    if role.relevant and job.score >= int(profile.get("min_score", 35)):
                         source_stats[job.source]["job_fit"] += 1
                     if job.language_score >= int(profile.get("min_language_score", 40)):
                         source_stats[job.source]["language_fit"] += 1
                 elif is_new is None:
                     is_new = upsert_job(job)
-
-                upsert_profile_score(job, profile["id"])
 
                 eligible_language = job.language_score >= int(profile.get("min_language_score", 40))
                 if profile.get("hide_german_heavy", True) and job.language_label == "german_heavy":
@@ -153,7 +152,28 @@ async def run_search() -> dict:
                 if not profile.get("show_b2_stretch", True) and job.language_label == "stretch":
                     eligible_language = False
                 eligible = (
-                    employment_ok and job.overall_score >= int(profile.get("min_score", 35)) and eligible_language
+                    role.relevant
+                    and employment_ok
+                    and job.overall_score >= int(profile.get("min_score", 35))
+                    and eligible_language
+                )
+                if not employment_ok and _employment_label == "student_only":
+                    job.match_tier = "excluded"
+                else:
+                    job.match_tier = classify_match_tier(
+                        role_relevant=role.relevant,
+                        eligible=eligible,
+                        overall_score=job.overall_score,
+                        employment_constraint=any(
+                            reason.startswith("employment mismatch:") for reason in employment_reasons
+                        ),
+                        language_label=job.language_label,
+                    )
+                upsert_profile_score(
+                    job,
+                    profile["id"],
+                    role_relevant=role.relevant,
+                    match_tier=job.match_tier,
                 )
                 if eligible:
                     profile_match_counts[profile["id"]] += 1
