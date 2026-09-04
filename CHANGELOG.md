@@ -47,6 +47,16 @@
 - Version-stamps the UI shell asset so browsers load the current sidebar after an update.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 20.1.1
+
+### What's Changed
+* Clean up manual job-source shortcuts by @emnl51 in https://github.com/emnl51/bert/pull/84
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/20.1.0...20.1.1
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/20.1.1)
+
 ## 20.0.0
 
 ### What's Changed
