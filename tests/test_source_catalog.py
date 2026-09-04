@@ -4,12 +4,8 @@ from app.source_catalog import SOURCE_CATALOG, render_search_url
 def test_catalog_contains_requested_platforms():
     keys = {x["key"] for x in SOURCE_CATALOG}
     expected = {
-        "linkedin",
         "indeed",
         "stepstone",
-        "google",
-        "glassdoor",
-        "talent",
         "arbeitsagentur",
         "jooble",
         "greenhouse",
@@ -18,6 +14,19 @@ def test_catalog_contains_requested_platforms():
         "rss",
     }
     assert expected.issubset(keys)
+
+
+def test_catalog_only_keeps_useful_manual_search_shortcuts():
+    manual_keys = {x["key"] for x in SOURCE_CATALOG if x["mode"] == "search-only"}
+    assert manual_keys == {"indeed", "stepstone-search", "arbeitsagentur"}
+
+
+def test_arbeitsagentur_uses_current_jobs_search_parameters():
+    source = next(x for x in SOURCE_CATALOG if x["key"] == "arbeitsagentur")
+    url = render_search_url(source["url_template"], "quality engineer", "Berlin")
+    assert "suchbereich=jobs" in url
+    assert "was=quality+engineer" in url
+    assert "wo=Berlin" in url
 
 
 def test_search_url_is_encoded():
