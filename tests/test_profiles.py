@@ -170,6 +170,34 @@ def test_complete_job_detail_is_limited_to_scored_profile(tmp_path, monkeypatch)
     assert get_job_for_profile(job.key, profiles[1]["id"]) is None
 
 
+def test_existing_unknown_work_time_rows_are_hidden_for_part_time_profiles(tmp_path, monkeypatch):
+    setup_db(tmp_path, monkeypatch)
+    profile_id = save_profile(
+        {
+            "name": "Part-time quality",
+            "slug": "part-time-quality",
+            "keywords": {"format": {"Teilzeit": 16, "part time": 16}},
+        }
+    )
+    vacancy = Job(
+        source="test",
+        external_id="unknown-hours",
+        title="Mitarbeiter Qualitätskontrolle",
+        company="Example GmbH",
+        location="Berlin",
+        url="https://example.com/unknown-hours",
+        description="Prüfung und Dokumentation von Bauteilen.",
+    )
+    vacancy.score = 75
+    vacancy.language_score = 80
+    vacancy.overall_score = 77
+    db.upsert_job(vacancy)
+    upsert_profile_score(vacancy, profile_id, role_relevant=True, match_tier="match")
+
+    assert list_jobs_for_profile(profile_id, decision="all", language="all") == []
+    assert get_job_for_profile(vacancy.key, profile_id) is None
+
+
 def test_role_irrelevant_scores_are_not_shown_in_review_queue(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
     profile = list_profiles()[0]

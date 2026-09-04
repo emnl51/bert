@@ -2,7 +2,7 @@ from collections import defaultdict
 from copy import deepcopy
 
 from .db import create_run, finish_run, mark_notified, upsert_job
-from .employment_filter import assess_employment_fit, search_terms_for_profile
+from .employment_filter import assess_employment_fit, is_hard_employment_exclusion, search_terms_for_profile
 from .feedback_store import apply_learned_penalty
 from .positive_learning import apply_positive_boost, sync_application_events
 from .notifier import send_email, send_telegram
@@ -157,7 +157,7 @@ async def run_search() -> dict:
                     and job.overall_score >= int(profile.get("min_score", 35))
                     and eligible_language
                 )
-                if not employment_ok and _employment_label == "student_only":
+                if is_hard_employment_exclusion(profile, employment_ok, _employment_label):
                     job.match_tier = "excluded"
                 else:
                     job.match_tier = classify_match_tier(

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .db import connection
+from .employment_filter import profile_requires_confirmed_work_time
 from .job_metadata import classify_job_metadata
 
 PROFILE_SCHEMA = """
@@ -622,6 +623,8 @@ def list_jobs_for_profile(
         item["reasons"] = json.loads(item.pop("reasons_json") or "[]")
         item["language_reasons"] = json.loads(item.pop("language_reasons_json") or "[]")
         item.update(classify_job_metadata(item))
+        if profile_requires_confirmed_work_time(profile) and item["employment_type"] == "unknown":
+            continue
         item.pop("description", None)
         item["remote"] = bool(item["remote"])
         item["role_relevant"] = bool(item["role_relevant"])
@@ -632,7 +635,8 @@ def list_jobs_for_profile(
 def get_job_for_profile(job_key: str, profile_id: int, user_id: int | None = None) -> dict[str, Any] | None:
     """Return one complete job only when it belongs to the user's search profile."""
     ensure_profile_schema(user_id)
-    if not get_profile(profile_id, user_id=user_id):
+    profile = get_profile(profile_id, user_id=user_id)
+    if not profile:
         return None
     owner_key = "admin" if user_id is None else f"user:{int(user_id)}"
     with connection() as con:
@@ -656,6 +660,8 @@ def get_job_for_profile(job_key: str, profile_id: int, user_id: int | None = Non
     item["reasons"] = json.loads(item.pop("reasons_json") or "[]")
     item["language_reasons"] = json.loads(item.pop("language_reasons_json") or "[]")
     item.update(classify_job_metadata(item))
+    if profile_requires_confirmed_work_time(profile) and item["employment_type"] == "unknown":
+        return None
     item["remote"] = bool(item["remote"])
     item["role_relevant"] = bool(item["role_relevant"])
     return item
