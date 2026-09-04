@@ -17,6 +17,9 @@ PART_TIME_SIGNALS = (
     "parttime",
     "minijob",
     "mini-job",
+    "nebenjob",
+    "studentenjob",
+    "student job",
     "geringfügige beschäftigung",
     "geringfuegige beschaeftigung",
     "20 hours per week",
@@ -48,6 +51,8 @@ STUDENT_SIGNALS = (
     "student assistant",
     "studentische aushilfe",
     "studentische hilfskraft",
+    "studentenjob",
+    "student job",
 )
 HOURS_PATTERN = re.compile(
     r"(?<!\d)(?P<low>\d{1,2})(?:\s*(?:-|–|bis|to)\s*(?P<high>\d{1,2}))?"
@@ -99,6 +104,11 @@ def profile_targets_full_time(profile: dict) -> bool:
     if any(x in identity for x in ("full-time", "full time", "vollzeit")):
         return True
     return any(term in FULL_TIME_SIGNALS for term in format_terms)
+
+
+def profile_requires_confirmed_work_time(profile: dict) -> bool:
+    """Return whether an unknown work type must never enter the review queue."""
+    return profile_targets_part_time(profile) or str(profile.get("role_level") or "any") == "student"
 
 
 QUERY_ARRANGEMENT_PATTERN = re.compile(
@@ -227,10 +237,10 @@ def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple
     """Classify employment format, optionally enforcing it as a hard gate.
 
     A positive part-time/student signal wins over generic full-time boilerplate. For a
-    strict part-time search, explicit full-time jobs and jobs with no confirmable target
-    format are rejected. In preference mode they remain visible as stretch results.
+    part-time or student search, jobs with no confirmable work type are always rejected.
+    Explicitly different work types remain visible only when preference mode allows them.
     """
-    targets_part_time = profile_targets_part_time(profile)
+    targets_part_time = profile_targets_part_time(profile) or str(profile.get("role_level") or "any") == "student"
     targets_full_time = profile_targets_full_time(profile)
     title = _norm(job.title)
     body = _norm(f"{job.title} {job.description}")
@@ -261,6 +271,8 @@ def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple
     preference_reasons = _schedule_preference_reasons(profile, body, weekly_hours)
     preference_mismatch = any(reason.startswith("employment mismatch:") for reason in preference_reasons)
     if targets_part_time == targets_full_time:
+        if targets_part_time and not part_time and not full_time:
+            return False, "unclear", ["employment mismatch: working time not confirmed", *preference_reasons]
         label = "schedule_preference" if preference_reasons else "not_restricted"
         return ((not strict) if preference_mismatch else True), label, preference_reasons
 
@@ -280,7 +292,7 @@ def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple
         return (not strict), "full_time", reasons
     if targets_part_time:
         reasons = ["employment mismatch: part-time/minijob not confirmed"]
-        return (not strict), "unclear", reasons
+        return False, "unclear", reasons
 
     if full_time:
         reasons = ["employment: full-time confirmed", *preference_reasons]
@@ -289,3 +301,10 @@ def assess_employment_fit(job: Job, profile: dict, strict: bool = True) -> tuple
         reasons = ["employment mismatch: part-time/student"]
         return (not strict), "part_time", reasons
     return (not strict), "unclear", ["employment mismatch: full-time not confirmed"]
+
+
+def is_hard_employment_exclusion(profile: dict, employment_ok: bool, label: str, strict: bool = False) -> bool:
+    """Keep unknown work time out of student/part-time review queues in every mode."""
+    if employment_ok:
+        return False
+    return strict or label == "student_only" or (label == "unclear" and profile_requires_confirmed_work_time(profile))

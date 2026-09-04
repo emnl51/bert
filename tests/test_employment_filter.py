@@ -46,6 +46,13 @@ def test_minijob_is_eligible_even_if_not_in_old_profile_json():
     assert label == "part_time"
 
 
+def test_nebenjob_and_studentenjob_are_confirmed_work_types():
+    for title in ("Nebenjob Einkauf", "Studentenjob Supply Chain"):
+        ok, label, _ = assess_employment_fit(job(title), PROFILE, strict=False)
+        assert ok is True
+        assert label == "part_time"
+
+
 def test_explicit_full_time_is_rejected():
     ok, label, reasons = assess_employment_fit(
         job("Supply Chain Specialist", "Employment type: fulltime. Permanent position."), PROFILE
@@ -55,13 +62,26 @@ def test_explicit_full_time_is_rejected():
     assert "employment mismatch: full-time" in reasons
 
 
-def test_unknown_format_is_rejected_for_strict_part_time_profile():
-    ok, label, reasons = assess_employment_fit(
-        job("Supply Chain Specialist", "International procurement and SAP responsibilities."), PROFILE
-    )
-    assert ok is False
-    assert label == "unclear"
-    assert any("not confirmed" in r for r in reasons)
+def test_unknown_format_is_always_rejected_for_part_time_profile():
+    vacancy = job("Supply Chain Specialist", "International procurement and SAP responsibilities.")
+
+    for strict in (False, True):
+        ok, label, reasons = assess_employment_fit(vacancy, PROFILE, strict=strict)
+        assert ok is False
+        assert label == "unclear"
+        assert any("not confirmed" in r for r in reasons)
+
+
+def test_unknown_format_can_remain_a_preference_only_for_full_time_profile():
+    profile = {
+        "name": "Quality engineering / Full-time",
+        "slug": "quality-full-time",
+        "keywords": {"format": {"Vollzeit": 16, "full time": 16}},
+    }
+    vacancy = job("Quality Engineer", "Manufacturing quality systems and supplier development.")
+
+    assert assess_employment_fit(vacancy, profile, strict=False)[:2] == (True, "unclear")
+    assert assess_employment_fit(vacancy, profile, strict=True)[:2] == (False, "unclear")
 
 
 def test_mixed_full_and_part_time_profile_accepts_both_and_keeps_queries():
@@ -82,6 +102,10 @@ def test_mixed_full_and_part_time_profile_accepts_both_and_keeps_queries():
     assert "Qualitätsprüfer Teilzeit" in terms
     assert assess_employment_fit(job("Qualitätsprüfer Vollzeit"), mixed)[0] is True
     assert assess_employment_fit(job("Qualitätsprüfer Teilzeit"), mixed)[0] is True
+    assert assess_employment_fit(job("Qualitätsprüfer", "Bauteile prüfen."), mixed, strict=False)[:2] == (
+        False,
+        "unclear",
+    )
 
 
 def test_first_class_hours_and_availability_are_constraints_or_preferences():

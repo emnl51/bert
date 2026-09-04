@@ -49,6 +49,20 @@ def test_metadata_falls_back_to_first_seen_without_inventing_work_type():
     assert metadata["data_quality"] < 80
 
 
+def test_studentenjob_is_not_reported_as_unknown_work_time():
+    metadata = classify_job_metadata(
+        {
+            "title": "Studentenjob Einkauf",
+            "description": "Unterstützung des Supply-Chain-Teams.",
+            "company": "Example GmbH",
+            "location": "Berlin",
+        }
+    )
+
+    assert metadata["employment_type"] == "working_student"
+    assert metadata["employment_label"] == "Working student"
+
+
 def test_metadata_prefers_iso_publication_date_over_first_seen():
     metadata = classify_job_metadata(
         {

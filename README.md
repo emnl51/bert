@@ -163,6 +163,10 @@ management, and student-only titles; an engineering profile rejects technician-o
 student profile requires an explicit student-role signal. Weekly hours and availability act as labeled preferences
 for Search Jobs in preference mode and as exclusions in strict working-time mode.
 
+Part-time and working-student profiles always require a confirmed work type after Bert inspects the job title,
+available description, hours/workload text, and provider metadata. A vacancy that still shows **Work time unknown** is
+excluded from review and notifications even when its Search Job uses preference mode.
+
 Profiles referenced by Search Jobs cannot be deleted. Bert reports the linked Search Job names so they can be
 reassigned or removed first; profile-specific scores are deleted only after those references are resolved.
 

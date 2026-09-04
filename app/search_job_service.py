@@ -3,7 +3,7 @@ import uuid
 from copy import deepcopy
 from urllib.parse import urlsplit, urlunsplit
 from .db import list_sources, mark_notified, upsert_job
-from .employment_filter import assess_employment_fit, search_terms_for_profile
+from .employment_filter import assess_employment_fit, is_hard_employment_exclusion, search_terms_for_profile
 from .language_store import upsert_language_fit
 from .notifier import send_email, send_telegram
 from .positive_learning import apply_positive_boost, sync_application_events
@@ -223,7 +223,12 @@ async def run_search_job(search_job_id: int) -> dict:
                 upsert_profile_score(job, profile["id"], role_relevant=False, match_tier="excluded")
                 continue
 
-            hard_employment_exclusion = not employment_ok and (strict_employment or _employment_label == "student_only")
+            hard_employment_exclusion = is_hard_employment_exclusion(
+                profile,
+                employment_ok,
+                _employment_label,
+                strict=strict_employment,
+            )
             if hard_employment_exclusion:
                 filtered["employment"] += 1
                 job.match_tier = "excluded"

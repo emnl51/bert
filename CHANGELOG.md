@@ -16,6 +16,7 @@
 
 ### Fixed
 
+- Excludes unresolved `Work time unknown` vacancies from part-time and working-student searches in every mode.
 - Prevents guided profile edits from silently replacing custom queries and role terms.
 - Preserves and reloads English level, weekly hours, and availability after a profile is saved.
 - Returns an actionable list of linked Search Jobs instead of a server error when a referenced profile is deleted.

@@ -34,7 +34,7 @@ PROFILE = {
 
 @pytest.mark.parametrize(
     ("employment_mode", "expected_matches", "process_tier", "employment_filtered"),
-    (("prefer", 2, "stretch", 0), ("strict", 1, "excluded", 1)),
+    (("prefer", 2, "stretch", 1), ("strict", 1, "excluded", 2)),
 )
 def test_pipeline_separates_role_relevance_from_working_time_constraints(
     monkeypatch, employment_mode, expected_matches, process_tier, employment_filtered
@@ -90,6 +90,15 @@ def test_pipeline_separates_role_relevance_from_working_time_constraints(
             url="https://example.com/quality-short",
             description="Part-time role in an English-speaking team.",
         ),
+        Job(
+            source="test",
+            external_id="quality-unknown-time",
+            title="Quality Engineer",
+            company="Example Manufacturing",
+            location="Berlin",
+            url="https://example.com/quality-unknown-time",
+            description="Manufacturing quality systems with SPC and FMEA in an English-speaking team.",
+        ),
     ]
     writes = []
 
@@ -135,3 +144,8 @@ def test_pipeline_separates_role_relevance_from_working_time_constraints(
     assert result["filtered"]["employment"] == employment_filtered
     assert ("process", process_tier, {"role_relevant": True, "match_tier": process_tier}) in writes
     assert ("quality-short", "stretch", {"role_relevant": True, "match_tier": "stretch"}) in writes
+    assert (
+        "quality-unknown-time",
+        "excluded",
+        {"role_relevant": True, "match_tier": "excluded"},
+    ) in writes

@@ -7,7 +7,7 @@ from .search_intent import ROLE_FAMILIES, matched_role_families
 _PART_TIME_RE = re.compile(r"(?i)\b(teilzeit|part[ -]?time|nebenjob)\b")
 _FULL_TIME_RE = re.compile(r"(?i)\b(vollzeit|full[ -]?time)\b")
 _MINIJOB_RE = re.compile(r"(?i)\b(mini[ -]?job|geringfügig\w*|geringfuegig\w*)\b")
-_STUDENT_RE = re.compile(r"(?i)\b(werkstudent\w*|working student|studentische hilfskraft)\b")
+_STUDENT_RE = re.compile(r"(?i)\b(werkstudent\w*|working student|studentische hilfskraft|studentenjob|student job)\b")
 _HOURS_RE = re.compile(
     r"(?i)(?<!\d)(\d{1,2})(?:\s*(?:-|–|bis|to)\s*(\d{1,2}))?\s*"
     r"(?:stunden|std\.?|hours?|h|wochenstunden)(?:\s*(?:pro\s+woche|per\s+week|/\s*woche))?\b"
