@@ -295,10 +295,10 @@ class JobTrackUpdater:
             build_args.append(self.service)
             self._compose(*build_args, timeout=1800)
             self._set_state("restarting", "Restarting the Bert service…", deploy_pending=True)
-            self._compose("up", "-d", "--no-deps", self.service, timeout=300)
+            self._compose("up", "-d", "--no-deps", "--force-recreate", self.service, timeout=300)
 
             self._set_state("verifying", "Waiting for the health check…", deploy_pending=True)
-            self._wait_for_health()
+            self._wait_for_health(expected_version=current.get("remote_version"))
             self._refresh_repo_state(fetch=False)
             self._set_state(
                 "succeeded",
@@ -319,13 +319,21 @@ class JobTrackUpdater:
                 finished_at=utc_now(),
             )
 
-    def _wait_for_health(self) -> None:
+    def _wait_for_health(self, expected_version: str | None = None) -> None:
         last_error = "health endpoint did not respond"
         for _ in range(45):
             try:
                 with urllib.request.urlopen(self.health_url, timeout=4) as response:  # noqa: S310 - configured admin URL
                     payload = json.loads(response.read().decode("utf-8"))
                     if response.status == 200 and payload.get("status") == "ok":
+                        running_version = str(payload.get("version") or "").removeprefix("v")
+                        if expected_version and running_version != expected_version:
+                            last_error = (
+                                f"expected Bert {expected_version}, but health reports "
+                                f"{running_version or 'no version'}"
+                            )
+                            time.sleep(2)
+                            continue
                         self._log(f"Health check passed: {self.health_url}")
                         return
                     last_error = f"unexpected health response: HTTP {response.status}"
