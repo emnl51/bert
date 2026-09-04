@@ -7,7 +7,7 @@ from starlette.requests import Request
 
 from app.config import settings
 from app.update_client import require_same_origin_update, update_status
-from scripts.jobtrack_updater import JobTrackUpdater, updater_setting
+from scripts.jobtrack_updater import JobTrackUpdater, UpdateFailure, updater_setting
 
 
 def request_with_headers(**headers: str) -> Request:
@@ -180,6 +180,8 @@ def test_update_feature_is_wired_without_docker_socket_mount():
     assert '"--ff-only"' in updater
     assert '"--tags"' in updater
     assert "f\"APP_VERSION={current['remote_version']}\"" in updater
+    assert '"--force-recreate"' in updater
+    assert '_wait_for_health(expected_version=current.get("remote_version"))' in updater
     assert "source.backup(backup)" in updater
     assert "_wait_for_health" in updater
     assert "EnvironmentFile=/etc/bert-updater.env" in systemd
@@ -201,6 +203,50 @@ def test_updater_prefers_bert_settings_and_preserves_jobtrack_compatibility(monk
 def test_updater_reads_dynamic_application_version_fallback():
     text = Path("app/version.py").read_text(encoding="utf-8")
     assert JobTrackUpdater._version_from_text(text) == "17.2.2"
+
+
+def test_health_verification_requires_expected_deployed_version(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return b'{"status":"ok","version":"19.1.3"}'
+
+    updater = object.__new__(JobTrackUpdater)
+    updater.health_url = "http://bert.test/health"
+    updater._log = lambda _: None
+    monkeypatch.setattr("scripts.jobtrack_updater.urllib.request.urlopen", lambda *_, **__: Response())
+    monkeypatch.setattr("scripts.jobtrack_updater.time.sleep", lambda _: None)
+
+    with pytest.raises(UpdateFailure, match="expected Bert 20.1.0, but health reports 19.1.3"):
+        updater._wait_for_health(expected_version="20.1.0")
+
+
+def test_health_verification_accepts_expected_deployed_version(monkeypatch):
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return b'{"status":"ok","version":"v20.1.0"}'
+
+    updater = object.__new__(JobTrackUpdater)
+    updater.health_url = "http://bert.test/health"
+    updater._log = lambda _: None
+    monkeypatch.setattr("scripts.jobtrack_updater.urllib.request.urlopen", lambda *_, **__: Response())
+
+    updater._wait_for_health(expected_version="20.1.0")
 
 
 def test_legacy_application_profile_index_is_created_after_column_migration():
