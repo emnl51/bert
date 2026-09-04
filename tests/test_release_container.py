@@ -26,7 +26,7 @@ def test_release_workflow_uses_release_tag_as_application_version():
 def test_container_exposes_release_version_to_application():
     dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
     assert "ARG APP_VERSION" in dockerfile
-    assert "APP_VERSION=${APP_VERSION}" in dockerfile
+    assert "BERT_BUILD_VERSION=${APP_VERSION}" in dockerfile
 
 
 def test_application_version_uses_release_build_version(monkeypatch):
@@ -36,9 +36,18 @@ def test_application_version_uses_release_build_version(monkeypatch):
     assert runpy.run_path("app/version.py")["VERSION"] == "23.4.5"
 
 
+def test_baked_release_version_wins_over_stale_runtime_override(monkeypatch):
+    import runpy
+
+    monkeypatch.setenv("BERT_BUILD_VERSION", "v24.0.0")
+    monkeypatch.setenv("APP_VERSION", "v19.1.3")
+    assert runpy.run_path("app/version.py")["VERSION"] == "24.0.0"
+
+
 def test_application_version_keeps_source_fallback(monkeypatch):
     import runpy
 
+    monkeypatch.delenv("BERT_BUILD_VERSION", raising=False)
     monkeypatch.delenv("APP_VERSION", raising=False)
     assert runpy.run_path("app/version.py")["VERSION"] == "17.2.2"
 

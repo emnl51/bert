@@ -97,6 +97,10 @@ ADMIN_PASSWORD=replace-with-a-long-unique-password
 APP_SECRET_KEY=replace-with-the-generated-secret
 ```
 
+Do not set `APP_VERSION` in `.env`. Release versions are embedded into the
+container image at build time; a runtime override can otherwise make the UI
+report a stale version.
+
 Start Bert:
 
 ```bash
