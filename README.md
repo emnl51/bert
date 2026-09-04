@@ -97,6 +97,10 @@ ADMIN_PASSWORD=replace-with-a-long-unique-password
 APP_SECRET_KEY=replace-with-the-generated-secret
 ```
 
+Do not set `APP_VERSION` in `.env`. Release versions are embedded into the
+container image at build time; a runtime override can otherwise make the UI
+report a stale version.
+
 Start Bert:
 
 ```bash
@@ -151,24 +155,6 @@ After signing in as the administrator:
 3. Create Search Jobs and assign profiles, schedules, and optional Candidate Profiles.
 4. Configure personal Telegram or email notifications in the user workspace.
 5. Configure account-activation email under **Administration → System Email**.
-
-The Search Profile editor keeps the everyday choices in **Profile essentials**: target role level, role families,
-working arrangements, German and English ability, preferred weekly hours, availability, and provider-query
-languages. Saving automatically adds generated bilingual suggestions while preserving existing custom terms.
-Raw thresholds, exact query lists, allowlists, blocklists, and scoring JSON remain available under the collapsed
-**Advanced matching settings** section.
-
-Role level is an eligibility boundary rather than a score boost. A technician profile rejects engineering,
-management, and student-only titles; an engineering profile rejects technician-only and student titles; a working-
-student profile requires an explicit student-role signal. Weekly hours and availability act as labeled preferences
-for Search Jobs in preference mode and as exclusions in strict working-time mode.
-
-Part-time and working-student profiles always require a confirmed work type after Bert inspects the job title,
-available description, hours/workload text, and provider metadata. A vacancy that still shows **Work time unknown** is
-excluded from review and notifications even when its Search Job uses preference mode.
-
-Profiles referenced by Search Jobs cannot be deleted. Bert reports the linked Search Job names so they can be
-reassigned or removed first; profile-specific scores are deleted only after those references are resolved.
 
 System email and job-notification email are separate. System email settings can be managed in the admin UI; the `SYSTEM_SMTP_*` values in `.env` remain available as fallback defaults.
 
