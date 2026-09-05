@@ -133,6 +133,7 @@ async def fetch_jobspy(source: dict, search_terms: list[str], target_location: s
                         description=description,
                         created_at=created,
                         remote=bool(row.get("is_remote", False)),
+                        discovered_queries=[term],
                     )
                 )
         return site_jobs, site_failures

@@ -1,7 +1,7 @@
 import re
 
 from .models import Job
-from .search_intent import ROLE_FAMILIES, ROLE_QUERY_TERMS, role_families_for_terms
+from .search_intent import ROLE_FAMILIES, ROLE_QUERY_TERMS, role_families_for_terms, role_queries
 from .text_match import contains_affirmed_phrase
 
 
@@ -140,6 +140,7 @@ def search_terms_for_profile(profile: dict, configured_terms: list[str] | None =
     title_terms = list((keywords.get("title") or {}).keys())
     intent_terms = configured if configured_terms is not None else [*title_terms, *configured]
     requested_families = role_families_for_terms(intent_terms)
+    role_level = str(profile.get("role_level") or "any")
     student_targeted = _profile_targets_students(profile)
     if (
         student_targeted
@@ -161,6 +162,12 @@ def search_terms_for_profile(profile: dict, configured_terms: list[str] | None =
     )
     generated: list[str] = []
     covered_families: set[str] = set()
+    if role_level in {"technician", "engineer"}:
+        for family in requested_families:
+            specific = role_queries(family, role_level)
+            if specific:
+                generated.extend(specific[:2])
+                covered_families.add(family)
 
     # Keep the first configured phrase for each family and every unknown/custom role.
     # Repeated synonyms from one family move behind this coverage pass instead of
@@ -172,20 +179,23 @@ def search_terms_for_profile(profile: dict, configured_terms: list[str] | None =
             covered_families.update(families)
     for family in requested_families:
         if family not in covered_families:
-            generated.append(ROLE_QUERY_TERMS.get(family, ROLE_FAMILIES[family][:2])[0])
+            family_queries = role_queries(family, role_level) or ROLE_FAMILIES[family][:2]
+            generated.append(family_queries[0])
             covered_families.add(family)
 
     # Add the other language, then any remaining user phrases, before narrower
     # part-time variants. This preserves user intent without starving later roles.
     for family in requested_families:
-        for query in ROLE_QUERY_TERMS.get(family, ROLE_FAMILIES[family][:2]):
+        for query in role_queries(family, role_level) or ROLE_FAMILIES[family][:2]:
             if query not in generated:
                 generated.append(query)
     generated.extend(base_configured)
     generated.extend(configured)
     if profile_targets_part_time(profile) and not profile_targets_full_time(profile):
         for family in requested_families:
-            english, german = ROLE_QUERY_TERMS.get(family, ROLE_FAMILIES[family][:2])
+            family_queries = role_queries(family, role_level) or ROLE_QUERY_TERMS.get(family, ROLE_FAMILIES[family][:2])
+            english = family_queries[0]
+            german = family_queries[1] if len(family_queries) > 1 else family_queries[0]
             generated.extend((f"{german} teilzeit", f"{english} part time", f"{german} minijob"))
     if not generated:
         generated.extend(title_terms)

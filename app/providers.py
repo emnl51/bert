@@ -122,6 +122,7 @@ async def fetch_adzuna(source: dict, search_terms: list[str], target_location: s
                         ),
                         created_at=item.get("created") or "",
                         remote=False,
+                        discovered_queries=[term],
                     )
                 )
     return jobs

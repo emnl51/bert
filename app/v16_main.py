@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from html import escape
 from pathlib import Path
 
+import httpx
+
 from fastapi import Depends, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
@@ -23,7 +25,17 @@ from .database_admin import (
     remove_temporary_database,
     restore_database,
 )
-from .db import list_sources, save_source
+from .db import connection, list_sources, save_source
+from .job_enrichment import fetch_public_job
+from .matching_diagnostics import (
+    diagnose_job,
+    ensure_matching_diagnostic_schema,
+    list_benchmarks,
+    run_benchmarks,
+    save_benchmark,
+)
+from .profile_store import get_profile
+from .source_analytics import query_quality_summary, search_job_source_summary
 from .security import (
     SESSION_COOKIE,
     authenticate_admin,
@@ -74,6 +86,7 @@ _inherited_lifespan = app.router.lifespan_context
 async def v17_account_lifespan(application):
     async with _inherited_lifespan(application):
         ensure_user_schema()
+        ensure_matching_diagnostic_schema()
         yield
 
 
@@ -135,6 +148,20 @@ class SystemEmailSettingsPayload(BaseModel):
 
 class SystemEmailTestPayload(BaseModel):
     email: str = Field(min_length=3, max_length=320)
+
+
+class MatchingDiagnosticPayload(BaseModel):
+    url: str = Field(min_length=8, max_length=2048)
+    title: str = Field(default="", max_length=300)
+    company: str = Field(default="", max_length=300)
+    location: str = Field(default="", max_length=300)
+    description: str = Field(default="", max_length=50_000)
+    published_at: str = Field(default="", max_length=80)
+    remote: bool = False
+    fetch_details: bool = True
+    save_benchmark: bool = False
+    expected_relevant: bool = True
+    note: str = Field(default="", max_length=2000)
 
 
 @app.post("/auth/admin-login")
@@ -291,12 +318,15 @@ def dashboard(request: Request, actor: dict = Depends(require_workspace)):
     business_scripts = (
         '<script src="/language-ui.js"></script>'
         '<script src="/review-ui.js"></script>'
+        '<script src="/source-options-ui.js"></script>'
         '<script src="/legacy-compat-ui.js"></script>'
         '<script src="/profile-ui.js"></script>'
         '<script src="/applications-profile-ui.js"></script>'
         '<script src="/search-job-ui.js"></script>'
+        '<script src="/matching-diagnostics-ui.js"></script>'
         '<script src="/intelligence-ui.js"></script>'
         '<script src="/intelligence-settings-ui.js"></script>'
+        '<script src="/semantic-settings-ui.js"></script>'
     )
     admin_scripts = (
         '<script src="/source-ui.js"></script>'
@@ -319,6 +349,108 @@ def dashboard(request: Request, actor: dict = Depends(require_workspace)):
             "Promise.all([loadOverview(),loadJobs(),loadApplications(),loadSettings()]).catch(e=>toast(e.message,true));",
         )
     return HTMLResponse(html.replace("</body>", scripts + "</body>"))
+
+
+@app.get("/matching-diagnostics-ui.js")
+def matching_diagnostics_ui(_: dict = Depends(require_workspace)):
+    return Response(
+        Path("app/matching-diagnostics-ui.js").read_text(encoding="utf-8"),
+        media_type="application/javascript",
+    )
+
+
+@app.get("/source-options-ui.js")
+def source_options_ui(_: dict = Depends(require_workspace)):
+    return Response(Path("app/source-options-ui.js").read_text(encoding="utf-8"), media_type="application/javascript")
+
+
+@app.get("/semantic-settings-ui.js")
+def semantic_settings_ui(_: dict = Depends(require_workspace)):
+    return Response(
+        Path("app/semantic-settings-ui.js").read_text(encoding="utf-8"),
+        media_type="application/javascript",
+    )
+
+
+def _diagnostic_context(search_job_id: int, actor: dict) -> tuple[dict, dict]:
+    search_job = v10.get_search_job(search_job_id, True, user_id=actor["user_id"])
+    if not search_job:
+        raise HTTPException(status_code=404, detail="Search job not found")
+    profile = get_profile(int(search_job["profile_id"]), user_id=actor["user_id"])
+    if not profile:
+        raise HTTPException(status_code=404, detail="Search profile not found")
+    return search_job, profile
+
+
+@app.post("/api/search-jobs/{search_job_id}/diagnose")
+async def api_diagnose_matching(
+    search_job_id: int,
+    payload: MatchingDiagnosticPayload,
+    actor: dict = Depends(require_workspace),
+):
+    search_job, profile = _diagnostic_context(search_job_id, actor)
+    values = payload.model_dump()
+    if payload.fetch_details and (not payload.title or len(payload.description.split()) < 35):
+        try:
+            fetched = await fetch_public_job(payload.url)
+        except (ValueError, httpx.HTTPError) as exc:
+            if not payload.title:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            values["detail_fetch_error"] = str(exc)
+        else:
+            for key in ("title", "company", "location", "description", "published_at"):
+                if fetched.get(key) and (not values.get(key) or key == "description"):
+                    values[key] = fetched[key]
+            if fetched.get("employment_type"):
+                values["description"] = (
+                    f"Employment type: {fetched['employment_type']}\n{values.get('description', '')}"
+                ).strip()
+    if not str(values.get("title") or "").strip():
+        raise HTTPException(status_code=400, detail="A job title could not be extracted")
+    diagnosis = diagnose_job(values, search_job, profile)
+    if values.get("detail_fetch_error"):
+        diagnosis["detail_fetch_error"] = values["detail_fetch_error"]
+    if payload.save_benchmark:
+        diagnosis["benchmark_id"] = save_benchmark(values, search_job, profile, diagnosis, user_id=actor["user_id"])
+    return diagnosis
+
+
+@app.get("/api/search-jobs/{search_job_id}/benchmarks")
+def api_matching_benchmarks(search_job_id: int, actor: dict = Depends(require_workspace)):
+    _diagnostic_context(search_job_id, actor)
+    return {"benchmarks": list_benchmarks(search_job_id, user_id=actor["user_id"])}
+
+
+@app.delete("/api/search-jobs/{search_job_id}/benchmarks/{benchmark_id}")
+def api_delete_matching_benchmark(
+    search_job_id: int,
+    benchmark_id: int,
+    actor: dict = Depends(require_workspace),
+):
+    _diagnostic_context(search_job_id, actor)
+    with connection() as con:
+        cursor = con.execute(
+            "DELETE FROM matching_benchmarks WHERE id=? AND search_job_id=? AND user_id=?",
+            (benchmark_id, search_job_id, actor["user_id"] if actor["user_id"] is not None else 0),
+        )
+    if not cursor.rowcount:
+        raise HTTPException(status_code=404, detail="Benchmark not found")
+    return {"ok": True}
+
+
+@app.post("/api/search-jobs/{search_job_id}/benchmarks/run")
+def api_run_matching_benchmarks(search_job_id: int, actor: dict = Depends(require_workspace)):
+    search_job, profile = _diagnostic_context(search_job_id, actor)
+    return run_benchmarks(search_job, profile, user_id=actor["user_id"])
+
+
+@app.get("/api/search-jobs/{search_job_id}/quality")
+def api_search_job_quality(search_job_id: int, actor: dict = Depends(require_workspace)):
+    _diagnostic_context(search_job_id, actor)
+    return {
+        "sources": search_job_source_summary(search_job_id, user_id=actor["user_id"]),
+        "queries": query_quality_summary(search_job_id, user_id=actor["user_id"]),
+    }
 
 
 @app.get("/health")

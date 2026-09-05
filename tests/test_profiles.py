@@ -22,14 +22,14 @@ def setup_db(tmp_path, monkeypatch):
     ensure_feedback_schema()
 
 
-def add_job():
+def add_job(external_id="multi-1"):
     job = Job(
         source="test",
-        external_id="multi-1",
+        external_id=external_id,
         title="Working Student Supply Chain Procurement",
         company="Example GmbH",
         location="Berlin",
-        url="https://example.com/multi-1",
+        url=f"https://example.com/{external_id}",
         description="Supply chain procurement role using SAP and Excel in an international team.",
     )
     job.score = 70
@@ -288,6 +288,9 @@ def test_learning_is_isolated_by_profile(tmp_path, monkeypatch):
     upsert_profile_score(job, a["id"])
     upsert_profile_score(job, b["id"])
     record_feedback(job.key, "not_suitable", "wrong_role", learn=True, profile_id=a["id"])
+    corroborating = add_job("profile-negative-2")
+    upsert_profile_score(corroborating, a["id"])
+    record_feedback(corroborating.key, "not_suitable", "wrong_role", learn=True, profile_id=a["id"])
     candidate = Job(
         source="test",
         external_id="multi-2",
@@ -303,6 +306,9 @@ def test_learning_is_isolated_by_profile(tmp_path, monkeypatch):
     assert penalized < 60
     assert untouched == 60
     record_positive_event(job.key, "suitable", profile_id=b["id"])
+    positive_corroborating = add_job("profile-positive-2")
+    upsert_profile_score(positive_corroborating, b["id"])
+    record_positive_event(positive_corroborating.key, "suitable", profile_id=b["id"])
     boosted, _ = apply_positive_boost(candidate, 60, profile_id=b["id"])
     no_boost, _ = apply_positive_boost(candidate, 60, profile_id=a["id"])
     assert boosted > 60

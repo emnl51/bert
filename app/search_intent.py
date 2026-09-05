@@ -182,6 +182,28 @@ ROLE_QUERY_TERMS: dict[str, tuple[str, str]] = {
 }
 
 
+# A shared occupational family is useful for broad discovery, while the title
+# vocabulary must still respect the requested level.  In particular, an
+# engineer-only quality query cannot recover technician/inspection vacancies.
+ROLE_LEVEL_QUERY_TERMS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("quality", "technician"): (
+        "quality inspector",
+        "qualitätsprüfer",
+        "quality technician",
+        "qualitätstechniker",
+        "mitarbeiter qualitätssicherung",
+        "wareneingangsprüfer",
+    ),
+    ("quality", "engineer"): ("quality engineer", "qualitätsingenieur"),
+    ("production", "technician"): ("production technician", "produktionstechniker"),
+    ("process", "technician"): ("process technician", "prozesstechniker"),
+}
+
+
+def role_queries(family: str, role_level: str = "any") -> tuple[str, ...]:
+    return ROLE_LEVEL_QUERY_TERMS.get((family, str(role_level or "any")), ROLE_QUERY_TERMS.get(family, ()))
+
+
 PROFESSIONAL_TITLE_SIGNALS = (
     "engineer",
     "ingenieur",

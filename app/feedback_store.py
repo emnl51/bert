@@ -51,6 +51,7 @@ STOPWORDS = {
     "junior",
     "senior",
 }
+MIN_RULE_EVIDENCE = 2
 
 
 def _now():
@@ -161,7 +162,17 @@ def record_feedback(job_key, suitability, reason="", note="", learn=True, profil
         if not row:
             raise ValueError("Job not found")
         rules = _suggest_rules(dict(row), reason) if suitability == "not_suitable" and learn else []
-        ids = [_upsert_rule(con, profile_id, r, reason) for r in rules]
+        previous = con.execute(
+            """SELECT generated_rules_json FROM job_feedback
+               WHERE job_key=? AND profile_id=? AND suitability=? AND reason=?
+               ORDER BY id DESC LIMIT 1""",
+            (job_key, profile_id, suitability, reason),
+        ).fetchone()
+        ids = (
+            json.loads(previous["generated_rules_json"] or "[]")
+            if previous
+            else [_upsert_rule(con, profile_id, rule, reason) for rule in rules]
+        )
         now = _now()
         con.execute(
             "INSERT INTO job_feedback(job_key,profile_id,suitability,reason,note,generated_rules_json,created_at) VALUES(?,?,?,?,?,?,?)",
@@ -227,7 +238,16 @@ def list_learned_rules(profile_id=None):
             f"SELECT * FROM learned_rules {where} ORDER BY enabled DESC,evidence_count DESC,ABS(weight) DESC,term",
             params,
         ).fetchall()
-    negative = [{**dict(r), "enabled": bool(r["enabled"]), "polarity": "penalty", "strongest_event": ""} for r in rows]
+    negative = [
+        {
+            **dict(r),
+            "enabled": bool(r["enabled"]),
+            "ready": int(r["evidence_count"]) >= MIN_RULE_EVIDENCE,
+            "polarity": "penalty",
+            "strongest_event": "",
+        }
+        for r in rows
+    ]
     from .positive_learning import list_positive_rules
 
     positive = []
@@ -274,7 +294,9 @@ def apply_learned_penalty(job, base_score, profile_id=1):
     ensure_feedback_schema()
     with connection() as con:
         rules = con.execute(
-            "SELECT scope,term,weight FROM learned_rules WHERE enabled=1 AND profile_id=?", (profile_id,)
+            """SELECT scope,term,weight FROM learned_rules
+               WHERE enabled=1 AND evidence_count>=? AND profile_id=?""",
+            (MIN_RULE_EVIDENCE, profile_id),
         ).fetchall()
     fields = {
         "title": _normalise(getattr(job, "title", "")),
@@ -306,7 +328,10 @@ def feedback_stats(profile_id=None):
             params,
         ).fetchone()[0]
         rules = con.execute(
-            "SELECT COUNT(*) FROM learned_rules" + (pf + " AND " if pf else " WHERE ") + "enabled=1", params
+            "SELECT COUNT(*) FROM learned_rules"
+            + (pf + " AND " if pf else " WHERE ")
+            + "enabled=1 AND evidence_count>=2",
+            params,
         ).fetchone()[0]
     from .positive_learning import positive_stats
 

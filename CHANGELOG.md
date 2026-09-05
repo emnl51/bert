@@ -4,6 +4,12 @@
 
 ### Added
 
+- Adds a public-vacancy matching diagnostic that explains the first failed gate and saves labelled regression examples.
+- Adds per-Search Job precision/recall benchmarks plus source and query funnel analytics.
+- Adds evidence-backed extraction of working hours, workload, student status, experience, language levels, and quality-role specialization.
+- Adds bounded public-detail enrichment for sparse provider results with redirect-aware private-network protection.
+- Adds conservative cross-source vacancy clustering while preserving every original source link and discovery query.
+- Adds optional local multilingual semantic reranking through Ollama, disabled by default and limited to eligible vacancies.
 - Adds first-class profile fields for target role level, English ability, preferred weekly hours, and availability.
 - Adds technician, engineering, and working-student role-level gates to prevent cross-seniority matches.
 - Adds a structural role-relevance gate so location, language, schedule, and skill points cannot admit an unrelated occupation.
@@ -16,6 +22,8 @@
 
 ### Fixed
 
+- Prevents a single positive or negative feedback event from immediately distorting future scores.
+- Keeps optional enrichment, semantic, and analytics failures from stopping deterministic searches.
 - Excludes unresolved `Work time unknown` vacancies from part-time and working-student searches in every mode.
 - Prevents guided profile edits from silently replacing custom queries and role terms.
 - Preserves and reloads English level, weekly hours, and availability after a profile is saved.
@@ -28,6 +36,8 @@
 
 ### Changed
 
+- Requires two corroborating ordinary feedback examples before a learned rule affects ranking; interview and offer evidence remain immediately actionable.
+- Prioritizes quality-technician queries for technician profiles and quality-engineering queries for engineering profiles.
 - Reorganizes Search Profile editing around a compact essentials form and keeps raw scoring controls collapsed under Advanced settings.
 - Applies pending guide changes automatically on save and shows profile language, hours, and target level on profile cards.
 - Plans broad, unqualified role queries before schedule-specific variants and distributes capped provider budgets across requested role families.
