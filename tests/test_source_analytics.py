@@ -2,7 +2,15 @@ from collections import defaultdict
 
 from app import db
 from app.service import _merge_provider_diagnostics
-from app.source_analytics import ensure_source_analytics_schema, save_source_run_stats, source_quality_summary
+from app.source_analytics import (
+    ensure_source_analytics_schema,
+    query_quality_summary,
+    save_query_run_stats,
+    save_search_job_source_stats,
+    save_source_run_stats,
+    search_job_source_summary,
+    source_quality_summary,
+)
 
 
 def test_source_quality_summary(tmp_path, monkeypatch):
@@ -108,3 +116,32 @@ def test_provider_diagnostics_accumulate_for_sources_sharing_a_name_and_are_cons
     assert stats["Kleinanzeigen Jobs"]["provider_duplicates"] == 3
     assert stats["Kleinanzeigen Jobs"]["provider_accepted"] == 11
     assert all("_provider_diagnostics" not in source for source in sources)
+
+
+def test_search_job_source_and_query_funnels_report_health(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.settings, "database_path", str(tmp_path / "jobs.db"))
+    db.init_db()
+    for run_id in (1, 2, 3):
+        save_search_job_source_stats(
+            run_id,
+            7,
+            {
+                "productive": {"fetched": 10, "recommended": 3, "new_matches": 1},
+                "empty": {"fetched": 0},
+            },
+        )
+        save_query_run_stats(
+            run_id,
+            7,
+            {
+                "quality inspector": {"fetched": 10, "recommended": 2, "new_matches": 1},
+                "weak query": {"fetched": 100, "recommended": 1, "new_matches": 0},
+            },
+        )
+
+    sources = {row["source"]: row for row in search_job_source_summary(7)}
+    queries = {row["query"]: row for row in query_quality_summary(7)}
+    assert sources["productive"]["status"] == "productive"
+    assert sources["empty"]["status"] == "no_results"
+    assert queries["quality inspector"]["status"] == "productive"
+    assert queries["weak query"]["status"] == "low_yield"

@@ -11,6 +11,11 @@ It supports separate user workspaces, scheduled searches, profile-specific rules
 - German, English, mixed, and unknown job-ad language detection
 - Per-search preferred or strict working-time handling for full-time, part-time, Werkstudent, and Minijob searches
 - Bilingual role-first query planning, structural role relevance, and Strong / Match / Stretch result tiers
+- Public vacancy diagnostics with saved precision/recall regression benchmarks
+- Structured extraction of working hours, workload, student status, experience, language levels, and quality-role level
+- Cross-source duplicate clustering with every original application link preserved
+- Per-Search Job source and query funnel analytics
+- Optional local multilingual semantic reranking through Ollama; deterministic eligibility gates remain authoritative
 - Candidate Profiles with encrypted CV text
 - Optional local Ollama context for CV analysis
 - Application workspace with Kanban/list views, follow-up dates, contacts, activity history, and source conversion
@@ -60,6 +65,11 @@ separate stages so a high language, location, or skill score cannot rescue an un
 The CV Match threshold becomes a hard gate only when the provider supplied a sufficiently complete description.
 Title-relevant vacancies with a short card/snippet remain visible as `Stretch` with a deferred-CV explanation instead
 of being rejected for evidence the source did not provide.
+
+Before deciding that a sparse vacancy has unknown working time, Bert makes a bounded attempt to load the public
+vacancy page and extract `JobPosting` structured data or the visible description. Public URLs are validated on every
+redirect and private/local network addresses are rejected. The extracted facts retain their supporting text so hours,
+student requirements, language levels, experience, and quality-role level remain explainable.
 
 Search Jobs default to **Prefer profile hours; keep stretch roles**. This keeps a strong technical vacancy visible when
 it is full-time or its hours are missing, while labeling the constraint for review; it can still be notified when the
@@ -170,6 +180,25 @@ for Search Jobs in preference mode and as exclusions in strict working-time mode
 Part-time and working-student profiles always require a confirmed work type after Bert inspects the job title,
 available description, hours/workload text, and provider metadata. A vacancy that still shows **Work time unknown** is
 excluded from review and notifications even when its Search Job uses preference mode.
+
+Open **Search Jobs → Why was a job missed?** to paste a public vacancy URL and replay blocklist, role, working-time,
+language, learning, and fit decisions. Label representative URLs as **Should match** or **Should not match**, then run
+the saved benchmark after profile or matcher changes. Bert reports precision, recall, and the first failing stage.
+The same panel shows source and query funnels over recent runs. Treat `low yield` and `no results` as review signals;
+Bert does not automatically disable a source based on a small sample.
+
+Duplicate vacancies from different providers are clustered using canonical URL, normalized company/location, and
+conservative title similarity. Bert keeps the richest description and exposes all original source links in the job
+detail dialog.
+
+Feedback learning is deliberately conservative: a dismissal, suitability decision, or ordinary application must be
+corroborated by a second matching example before changing future scores. Interview and offer evidence can activate a
+positive preference immediately. Learned adjustments remain profile-specific and capped.
+
+Optional semantic reranking can be enabled under **Settings → Intelligence** when a local Ollama server and embedding
+model such as `nomic-embed-text` are available. It reranks only vacancies that already passed deterministic role,
+working-time, language, fit, and CV gates; it cannot make an ineligible vacancy eligible. The default semantic weight
+is 15% and the feature is off by default, so no external AI service is required.
 
 Profiles referenced by Search Jobs cannot be deleted. Bert reports the linked Search Job names so they can be
 reassigned or removed first; profile-specific scores are deleted only after those references are resolved.

@@ -48,7 +48,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     decision_at TEXT,
     content_language TEXT NOT NULL DEFAULT 'unknown',
     content_language_confidence REAL NOT NULL DEFAULT 0,
-    content_language_source TEXT NOT NULL DEFAULT 'detected'
+    content_language_source TEXT NOT NULL DEFAULT 'detected',
+    source_options_json TEXT NOT NULL DEFAULT '[]',
+    discovered_queries_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_score ON jobs(score DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen ON jobs(first_seen DESC);
@@ -335,6 +337,10 @@ def _init_db_unlocked() -> None:
             con.execute("ALTER TABLE jobs ADD COLUMN content_language_confidence REAL NOT NULL DEFAULT 0")
         if "content_language_source" not in job_columns:
             con.execute("ALTER TABLE jobs ADD COLUMN content_language_source TEXT NOT NULL DEFAULT 'detected'")
+        if "source_options_json" not in job_columns:
+            con.execute("ALTER TABLE jobs ADD COLUMN source_options_json TEXT NOT NULL DEFAULT '[]'")
+        if "discovered_queries_json" not in job_columns:
+            con.execute("ALTER TABLE jobs ADD COLUMN discovered_queries_json TEXT NOT NULL DEFAULT '[]'")
         rows = con.execute(
             "SELECT job_key,title,description FROM jobs WHERE content_language='unknown' AND content_language_source='detected'"
         ).fetchall()
@@ -579,9 +585,32 @@ def upsert_job(job: Job) -> bool:
     detected = detect_content_language(job.title, job.description)
     with connection() as con:
         existing = con.execute(
-            "SELECT job_key,content_language_source FROM jobs WHERE job_key=?", (job.key,)
+            """SELECT job_key,description,content_language_source,
+                      source_options_json,discovered_queries_json
+               FROM jobs WHERE job_key=?""",
+            (job.key,),
         ).fetchone()
         if existing:
+            try:
+                stored_options = json.loads(existing["source_options_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                stored_options = []
+            try:
+                stored_queries = json.loads(existing["discovered_queries_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                stored_queries = []
+            source_options = list(dict.fromkeys(json.dumps(item, sort_keys=True) for item in stored_options))
+            for option in job.source_options:
+                encoded = json.dumps(option, sort_keys=True)
+                if encoded not in source_options:
+                    source_options.append(encoded)
+            merged_options = [json.loads(item) for item in source_options]
+            merged_queries = list(dict.fromkeys([*stored_queries, *job.discovered_queries]))
+            description = (
+                existing["description"]
+                if len(existing["description"] or "") > len(job.description or "")
+                else job.description
+            )
             language_sql = ""
             language_params = ()
             if existing["content_language_source"] != "manual":
@@ -589,17 +618,20 @@ def upsert_job(job: Job) -> bool:
                 language_params = (detected.code, detected.confidence)
             con.execute(
                 f"""UPDATE jobs SET title=?, company=?, location=?, url=?, description=?, created_at=?,
-                   remote=?, score=?, reasons_json=?, last_seen=?{language_sql} WHERE job_key=?""",
+                   remote=?, score=?, reasons_json=?, source_options_json=?, discovered_queries_json=?,
+                   last_seen=?{language_sql} WHERE job_key=?""",
                 (
                     job.title,
                     job.company,
                     job.location,
                     job.url,
-                    job.description,
+                    description,
                     job.created_at,
                     int(job.remote),
                     job.score,
                     json.dumps(job.reasons, ensure_ascii=False),
+                    json.dumps(merged_options, ensure_ascii=False),
+                    json.dumps(merged_queries, ensure_ascii=False),
                     now,
                     *language_params,
                     job.key,
@@ -609,8 +641,9 @@ def upsert_job(job: Job) -> bool:
         con.execute(
             """INSERT INTO jobs(job_key, source, external_id, title, company, location, url,
                description, created_at, remote, score, reasons_json, first_seen, last_seen, notified,
-               content_language, content_language_confidence, content_language_source)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'detected')""",
+               content_language, content_language_confidence, content_language_source,
+               source_options_json, discovered_queries_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'detected', ?, ?)""",
             (
                 job.key,
                 job.source,
@@ -628,6 +661,8 @@ def upsert_job(job: Job) -> bool:
                 now,
                 detected.code,
                 detected.confidence,
+                json.dumps(job.source_options, ensure_ascii=False),
+                json.dumps(job.discovered_queries, ensure_ascii=False),
             ),
         )
         return True

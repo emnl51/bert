@@ -1,6 +1,7 @@
 import re
 from datetime import date, datetime, timedelta, timezone
 
+from .job_enrichment import extract_job_facts
 from .search_intent import ROLE_FAMILIES, matched_role_families
 
 
@@ -129,6 +130,7 @@ def classify_job_metadata(job: dict, today: date | None = None) -> dict:
     quality += 10 if published else 0
     quality += 10 if employment_type != "unknown" else 0
     quality += 5 if categories else 0
+    facts = extract_job_facts(title, description, location)
 
     return {
         "categories": categories or ["Other"],
@@ -145,4 +147,10 @@ def classify_job_metadata(job: dict, today: date | None = None) -> dict:
         "freshness_label": freshness_label,
         "data_quality": min(100, quality),
         "description_preview": description[:260].rstrip(),
+        "student_required": facts["student_required"],
+        "experience_years": facts["experience_years"],
+        "language_levels": facts["language_levels"],
+        "role_specialization": facts["role_specialization"],
+        "fact_confidence": facts["confidence"],
+        "fact_evidence": facts["evidence"],
     }

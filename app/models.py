@@ -21,6 +21,9 @@ class Job:
     match_tier: str = "match"
     language_label: str = "unclear"
     language_reasons: list[str] = field(default_factory=list)
+    discovered_queries: list[str] = field(default_factory=list)
+    source_options: list[dict[str, str]] = field(default_factory=list)
+    semantic_score: int | None = None
 
     @property
     def key(self) -> str:

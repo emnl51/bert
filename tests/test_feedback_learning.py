@@ -30,7 +30,7 @@ def test_not_suitable_creates_learned_rule(tmp_path, monkeypatch):
     assert any(r["scope"] == "title" and r["enabled"] for r in rules)
 
 
-def test_learned_rule_reduces_future_score(tmp_path, monkeypatch):
+def test_learned_rule_waits_for_corroboration_then_reduces_future_score(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
     source = Job(
         source="test",
@@ -42,6 +42,20 @@ def test_learned_rule_reduces_future_score(tmp_path, monkeypatch):
     )
     insert_job(source)
     record_feedback(source.key, "not_suitable", "wrong_role", learn=True)
+    record_feedback(source.key, "not_suitable", "wrong_role", learn=True)
+    pending_score, pending_reasons = apply_learned_penalty(source, 80)
+    assert pending_score == 80
+    assert pending_reasons == []
+    corroborating = Job(
+        source="test",
+        external_id="corroborating",
+        title="Software Developer Intern",
+        company="Another",
+        location="Berlin",
+        url="https://example.com/corroborating",
+    )
+    insert_job(corroborating)
+    record_feedback(corroborating.key, "not_suitable", "wrong_role", learn=True)
     future = Job(
         source="test",
         external_id="2",

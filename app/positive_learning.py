@@ -17,6 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_positive_events_profile ON positive_events(profil
 """
 EVENT_STRENGTH = {"suitable": 4, "applied": 5, "interview": 9, "offer": 14}
 EVENT_RANK = {"suitable": 1, "applied": 2, "interview": 3, "offer": 4}
+MIN_POSITIVE_EVIDENCE = 2
 STOPWORDS = {
     "werkstudent",
     "working",
@@ -278,7 +279,15 @@ def list_positive_rules(profile_id=None):
         rows = con.execute(
             f"SELECT * FROM positive_rules {where} ORDER BY enabled DESC,evidence_count DESC,weight DESC,term", params
         ).fetchall()
-    return [{**dict(r), "enabled": bool(r["enabled"])} for r in rows]
+    return [
+        {
+            **dict(r),
+            "enabled": bool(r["enabled"]),
+            "ready": int(r["evidence_count"]) >= MIN_POSITIVE_EVIDENCE
+            or r["strongest_event"] in {"interview", "offer"},
+        }
+        for r in rows
+    ]
 
 
 def set_positive_rule_enabled(rule_id, enabled, user_id=None):
@@ -303,7 +312,10 @@ def apply_positive_boost(job, base_score, profile_id=1):
     ensure_positive_schema()
     with connection() as con:
         rules = con.execute(
-            "SELECT scope,term,weight FROM positive_rules WHERE enabled=1 AND profile_id=?", (profile_id,)
+            """SELECT scope,term,weight FROM positive_rules
+               WHERE enabled=1 AND profile_id=?
+                 AND (evidence_count>=? OR strongest_event IN ('interview','offer'))""",
+            (profile_id, MIN_POSITIVE_EVIDENCE),
         ).fetchall()
     fields = {
         "title": _normalise(getattr(job, "title", "")),
@@ -332,7 +344,10 @@ def positive_stats(profile_id=None):
     with connection() as con:
         events = con.execute("SELECT COUNT(*) FROM positive_events" + pf, params).fetchone()[0]
         rules = con.execute(
-            "SELECT COUNT(*) FROM positive_rules" + (pf + " AND " if pf else " WHERE ") + "enabled=1", params
+            "SELECT COUNT(*) FROM positive_rules"
+            + (pf + " AND " if pf else " WHERE ")
+            + "enabled=1 AND (evidence_count>=2 OR strongest_event IN ('interview','offer'))",
+            params,
         ).fetchone()[0]
         interviews = con.execute(
             "SELECT COUNT(*) FROM positive_events" + (pf + " AND " if pf else " WHERE ") + "event_type='interview'",

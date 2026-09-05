@@ -72,6 +72,9 @@ class IntelligenceSettingsPayload(BaseModel):
     ollama_url: str = "http://host.docker.internal:11434"
     ollama_model: str = "gemma3"
     ollama_timeout_seconds: int = Field(default=60, ge=10, le=120)
+    semantic_rerank_enabled: bool | None = None
+    semantic_model: str | None = Field(default=None, max_length=120)
+    semantic_weight: int | None = Field(default=None, ge=0, le=20)
 
 
 @app.get("/intelligence-ui.js")
@@ -154,6 +157,10 @@ def intelligence_settings(actor: dict = Depends(require_workspace)):
         "deterministic_weight": 70,
         "ai_weight": 30,
         "engine": "hybrid-v2",
+        "semantic_rerank_enabled": get_setting("semantic_rerank_enabled", "false", user_id=user_id).lower()
+        in ("1", "true", "yes", "on"),
+        "semantic_model": get_setting("semantic_model", "nomic-embed-text", user_id=user_id),
+        "semantic_weight": int(get_setting("semantic_weight", "15", user_id=user_id) or 15),
     }
 
 
@@ -164,6 +171,12 @@ def update_intelligence_settings(payload: IntelligenceSettingsPayload, actor: di
     set_setting("intelligence_ollama_url", payload.ollama_url.strip(), user_id=user_id)
     set_setting("intelligence_ollama_model", payload.ollama_model.strip(), user_id=user_id)
     set_setting("intelligence_ollama_timeout_seconds", str(payload.ollama_timeout_seconds), user_id=user_id)
+    if payload.semantic_rerank_enabled is not None:
+        set_setting("semantic_rerank_enabled", str(payload.semantic_rerank_enabled).lower(), user_id=user_id)
+    if payload.semantic_model is not None:
+        set_setting("semantic_model", payload.semantic_model.strip() or "nomic-embed-text", user_id=user_id)
+    if payload.semantic_weight is not None:
+        set_setting("semantic_weight", str(payload.semantic_weight), user_id=user_id)
     return {"ok": True}
 
 

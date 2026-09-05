@@ -608,6 +608,7 @@ def list_jobs_for_profile(
             f"""SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.description,j.created_at,j.first_seen,j.remote,
                                    COALESCE(js.decision,'unreviewed') AS decision,js.decision_at,
                                    j.content_language,j.content_language_confidence,j.content_language_source,
+                                   j.source_options_json,j.discovered_queries_json,
                                    s.job_score AS score,s.language_score,s.overall_score,s.role_relevant,s.match_tier,s.language_label,s.reasons_json,s.language_reasons_json,
                                    a.status AS application_status,a.applied_at
                             FROM job_profile_scores s JOIN jobs j ON j.job_key=s.job_key
@@ -622,6 +623,8 @@ def list_jobs_for_profile(
         item = dict(row)
         item["reasons"] = json.loads(item.pop("reasons_json") or "[]")
         item["language_reasons"] = json.loads(item.pop("language_reasons_json") or "[]")
+        item["source_options"] = json.loads(item.pop("source_options_json") or "[]")
+        item["discovered_queries"] = json.loads(item.pop("discovered_queries_json") or "[]")
         item.update(classify_job_metadata(item))
         if profile_requires_confirmed_work_time(profile) and item["employment_type"] == "unknown":
             continue
@@ -643,7 +646,8 @@ def get_job_for_profile(job_key: str, profile_id: int, user_id: int | None = Non
         row = con.execute(
             """SELECT j.job_key,j.source,j.title,j.company,j.location,j.url,j.description,j.created_at,
                               j.first_seen,j.remote,j.content_language,j.content_language_confidence,
-                              j.content_language_source,COALESCE(js.decision,'unreviewed') AS decision,
+                              j.content_language_source,j.source_options_json,j.discovered_queries_json,
+                              COALESCE(js.decision,'unreviewed') AS decision,
                               js.decision_at,s.job_score AS score,s.language_score,s.overall_score,
                               s.role_relevant,s.match_tier,s.language_label,s.reasons_json,s.language_reasons_json,
                               a.status AS application_status,a.applied_at
@@ -659,6 +663,8 @@ def get_job_for_profile(job_key: str, profile_id: int, user_id: int | None = Non
     item = dict(row)
     item["reasons"] = json.loads(item.pop("reasons_json") or "[]")
     item["language_reasons"] = json.loads(item.pop("language_reasons_json") or "[]")
+    item["source_options"] = json.loads(item.pop("source_options_json") or "[]")
+    item["discovered_queries"] = json.loads(item.pop("discovered_queries_json") or "[]")
     item.update(classify_job_metadata(item))
     if profile_requires_confirmed_work_time(profile) and item["employment_type"] == "unknown":
         return None

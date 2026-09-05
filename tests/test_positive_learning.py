@@ -36,7 +36,7 @@ def add_job():
     return job
 
 
-def test_suitable_event_is_idempotent_and_boosts_similar_jobs(tmp_path, monkeypatch):
+def test_suitable_event_is_idempotent_and_needs_corroboration_to_boost(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
     job = add_job()
     first = record_positive_event(job.key, "suitable")
@@ -45,6 +45,7 @@ def test_suitable_event_is_idempotent_and_boosts_similar_jobs(tmp_path, monkeypa
     assert second["created"] is False
     rules = list_positive_rules()
     assert rules
+    assert not any(rule["ready"] for rule in rules)
     candidate = Job(
         source="test",
         external_id="2",
@@ -55,6 +56,22 @@ def test_suitable_event_is_idempotent_and_boosts_similar_jobs(tmp_path, monkeypa
         description="Supply chain role with SAP and Excel.",
     )
     candidate.language_label = "english_first"
+    unchanged, pending_reasons = apply_positive_boost(candidate, 50)
+    assert unchanged == 50
+    assert pending_reasons == []
+    corroborating = Job(
+        source="test",
+        external_id="corroborating",
+        title="Working Student Supply Chain Operations",
+        company="Other GmbH",
+        location="Berlin",
+        url="https://example.com/corroborating",
+        description="Supply chain role using SAP and Excel.",
+    )
+    corroborating.language_label = "english_first"
+    db.upsert_job(corroborating)
+    upsert_language_fit(corroborating)
+    record_positive_event(corroborating.key, "suitable")
     boosted, reasons = apply_positive_boost(candidate, 50)
     assert boosted > 50
     assert any("preferred:" in r for r in reasons)

@@ -189,6 +189,7 @@ async def fetch_stepstone(source: dict, search_terms: list[str], target_location
                         )
                     break
                 for job in parsed:
+                    job.discovered_queries = list(dict.fromkeys([*job.discovered_queries, term]))
                     if job.url in seen:
                         continue
                     seen.add(job.url)
