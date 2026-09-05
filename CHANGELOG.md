@@ -57,6 +57,16 @@
 - Version-stamps the UI shell asset so browsers load the current sidebar after an update.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 20.2.3
+
+### What's Changed
+* Improve search matching diagnostics and ranking by @emnl51 in https://github.com/emnl51/bert/pull/88
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/20.2.1...20.2.3
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/20.2.3)
+
 ## 20.0.0
 
 ### What's Changed
