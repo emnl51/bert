@@ -57,6 +57,17 @@
 - Version-stamps the UI shell asset so browsers load the current sidebar after an update.
 - Raises Light and Dark theme text, border, control, and status contrast, with stronger Dark-mode readability.
 
+## 20.2.4
+
+### What's Changed
+* Bump ruff from 0.16.4 to 0.16.5 by @dependabot[bot] in https://github.com/emnl51/bert/pull/89
+* Bump pydantic from 2.11.7 to 2.13.5 by @dependabot[bot] in https://github.com/emnl51/bert/pull/90
+
+
+**Full Changelog**: https://github.com/emnl51/bert/compare/20.2.3...20.2.4
+
+[GitHub Release](https://github.com/emnl51/bert/releases/tag/20.2.4)
+
 ## 20.0.0
 
 ### What's Changed
